@@ -1,0 +1,510 @@
+// ATENÇÃO: este schema é COMPARTILHADO com o projeto `painel-360` (banco
+// Postgres único). Toda mudança aqui PRECISA ser refletida no schema do
+// painel-360, senão o `prisma db push` de um app vai detectar tabelas
+// "estranhas" e falhar.
+//
+// Regras pra evitar perda de dados:
+// 1. NUNCA usar --accept-data-loss em produção.
+// 2. Adicionar novos models nos DOIS projetos antes de qualquer deploy.
+// 3. Remoção de campos: fazer com migration e backup.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model PersonRole {
+  id        String    @id @default(cuid())
+  key       String    @unique
+  label     String
+  color     String    @default("#6366f1")
+  bgColor   String    @default("#eef2ff")
+  level     Int       @default(0)
+  contacts  Contact[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+enum Direction {
+  IN
+  OUT
+}
+
+enum DispatchStatus {
+  PENDING
+  SENDING
+  DONE
+  FAILED
+}
+
+model Contact {
+  id              String     @id @default(cuid())
+  name            String
+  phone           String     @unique
+  email           String?
+  // Slug público usado no minha-rede (link.azecode.cloud) pra montar URLs
+  // tipo /?lider=mario, /?coord=joao. Gerado a partir do nome.
+  publicSlug      String?    @unique
+  roleId          String
+  role            PersonRole @relation(fields: [roleId], references: [id])
+  parentId        String?
+  parent          Contact?   @relation("Hierarchy", fields: [parentId], references: [id])
+  children        Contact[]  @relation("Hierarchy")
+  // Usuário (login) ligado a este contato — quando alguém da rede tem acesso
+  // ao sistema (ex: coordenador, líder), aponta aqui. Apoiador normalmente fica null.
+  user            User?
+
+  dataNascimento  DateTime?
+  genero          String?
+  rua             String?
+  bairro          String?
+  cidade          String?
+  zona            String?
+
+  score           Float?   // média computada automaticamente
+  score1          Float?   // avaliador 1
+  score2          Float?   // avaliador 2
+  score3          Float?   // avaliador 3
+  scoreNote       String?
+
+  lastContactAt   DateTime?
+  lastMessage     String?
+  notes           String?
+  externalId      String?
+  labels          String[]   @default([])
+  source          String     @default("message")
+  profilePhotoUrl String?
+
+  conversations Conversation[]
+  groupMembers  GroupMember[]
+  demandas           Demanda[]        @relation("ContactDemandas")
+  agendaSolicitante  AgendaEvento[]   @relation("AgendaSolicitante")
+  agendaAnfitrioes   AgendaAnfitriao[] @relation("ContactAnfitrioes")
+
+  reuniaoLider      Reuniao[]          @relation("ReuniaoLider")
+  reuniaoAnfitrioes ReuniaoAnfitriao[] @relation("ReuniaoAnfitrioes")
+  reuniaoPresentes  ReuniaoPresente[]  @relation("ReuniaoPresentes")
+  reuniaoAvaliacoes ReuniaoAvaliacao[] @relation("ReuniaoAvaliadores")
+
+  campaigns         CampaignContact[]  @relation("CampaignTargetContact")
+  campaignsAssigned CampaignContact[]  @relation("CampaignAssignedTo")
+  campaignsSent     CampaignContact[]  @relation("CampaignSentBy")
+
+  customFields    Json?                                // valores dos campos personalizados (usado no Painel 360)
+  contactNotes    ContactNote[]
+  birthdayMessages BirthdayMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([phone])
+  @@index([cidade])
+  @@index([zona])
+  @@index([roleId])
+  @@index([source])
+}
+
+model KanbanStatus {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#6366f1")
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  conversations Conversation[]
+}
+
+model Label {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#6366f1")
+  bgColor   String   @default("#eef2ff")
+  createdAt DateTime @default(now())
+}
+
+model Conversation {
+  id              String       @id @default(cuid())
+  contactId       String
+  contact         Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  statusId        String
+  status          KanbanStatus @relation(fields: [statusId], references: [id])
+  whatsappChatId  String?
+  lastMessageAt   DateTime?
+  lastMessageText String?
+  closedAt        DateTime?
+  position        Int          @default(0)                  // ordem dentro da coluna do kanban
+  messages        Message[]
+  demandas        Demanda[]
+  reuniaoId       String?
+  reuniao         Reuniao? @relation("ReuniaoConversas", fields: [reuniaoId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([contactId])
+  @@index([statusId, position])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  content        String
+  direction      Direction    @default(OUT)
+  whatsappMsgId  String?
+  mediaType      String?
+  rawData        Json?
+  sentAt         DateTime     @default(now())
+}
+
+model ContactGroup {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  date        DateTime?
+  members     GroupMember[]
+  dispatches  Dispatch[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model GroupMember {
+  contactId String
+  groupId   String
+  contact   Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  group     ContactGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, groupId])
+}
+
+model Dispatch {
+  id        String           @id @default(cuid())
+  groupId   String
+  group     ContactGroup     @relation(fields: [groupId], references: [id])
+  message   String
+  status    DispatchStatus   @default(PENDING)
+  sentAt    DateTime?
+  results   DispatchResult[]
+  createdAt DateTime         @default(now())
+}
+
+model AppConfig {
+  key   String @id
+  value String
+}
+
+model User {
+  id        String    @id @default(cuid())
+  name      String
+  username  String?   @unique                       // login (case-insensitive normalizado)
+  email     String?   @unique                       // opcional
+  password  String                                  // bcrypt hash
+  isAdmin   Boolean   @default(false)
+  modules   String[]  @default([])                  // ex: ["conversas","contatos","campanhas"]
+  active    Boolean   @default(true)
+  lastLogin DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Vinculo opcional a um Contact — usado no minha-rede pra saber qual
+  // ramo da rede esse user controla (descendentes via parentId).
+  contactId String?  @unique
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  contactNotes ContactNote[]
+  auditLogs    AuditLog[]
+
+  @@index([username])
+}
+
+// Log de auditoria — registra ações relevantes do sistema.
+// Não é exaustivo: foca em CRUD de entidades importantes (users, contatos,
+// campanhas, demandas), envios (campanha/aniversário) e auth (login, troca
+// de senha). Admin consulta em /configuracoes → aba Logs.
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userName  String?  // snapshot do nome (sobrevive à exclusão do user)
+  action    String   // ex: "user.login", "contact.create", "campaign.send"
+  entity    String?  // ex: "Contact", "Campaign", "User"
+  entityId  String?
+  summary   String?  // texto curto exibido na UI
+  meta      Json?    // payload extra (campos alterados, contagens, etc)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model Demanda {
+  id            String   @id @default(cuid())
+  titulo        String
+  descricao     String?
+  status        String   @default("ANALISAR")
+  segmento      String?
+  prioridade    String   @default("NORMAL")
+  valor         Float?
+  obs           String?
+  lembrete      DateTime?
+  prazo         DateTime?
+  fechadaEm     DateTime?
+  arquivadaEm   DateTime?
+
+  solicitanteId String
+  solicitante   Contact      @relation("ContactDemandas", fields: [solicitanteId], references: [id])
+  conversaId    String?
+  conversa      Conversation? @relation(fields: [conversaId], references: [id])
+
+  agendas AgendaEvento[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([solicitanteId])
+  @@index([lembrete])
+  @@index([arquivadaEm])
+}
+
+model AgendaCalendario {
+  id        String         @id @default(cuid())
+  nome      String
+  cor       String         @default("#6366f1")
+  isPadrao  Boolean        @default(false)
+  createdAt DateTime       @default(now())
+  eventos   AgendaEvento[]
+}
+
+model AgendaEvento {
+  id                String  @id @default(cuid())
+  titulo            String
+  assunto           String?
+  tipo              String  @default("AGENDA")    // AGENDA | REUNIAO
+  status            String  @default("PENDENTE")  // PENDENTE | CONFIRMADA | REALIZADA | CANCELADA
+  inicio            DateTime
+  duracao           Int?    // minutos
+  local             String?
+  bairro            String?
+  zona              String?
+  quantidadePessoas Int?
+  oQuePrecisa       String?
+  notes             String?
+
+  solicitanteId   String?
+  solicitante     Contact? @relation("AgendaSolicitante", fields: [solicitanteId], references: [id])
+  solicitanteNome String?
+  solicitanteTel  String?
+
+  demandaId    String?
+  demanda      Demanda?          @relation(fields: [demandaId], references: [id])
+  calendarioId String?
+  calendario   AgendaCalendario? @relation(fields: [calendarioId], references: [id])
+
+  anfitrioes AgendaAnfitriao[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([inicio])
+  @@index([tipo])
+  @@index([status])
+  @@index([calendarioId])
+}
+
+model AgendaAnfitriao {
+  id        String       @id @default(cuid())
+  eventoId  String
+  evento    AgendaEvento @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact      @relation("ContactAnfitrioes", fields: [contactId], references: [id])
+}
+
+model Reuniao {
+  id        String   @id @default(cuid())
+  titulo    String
+  dataHora  DateTime
+  local     String?
+  bairro    String?
+  zona      String?
+  status    String   @default("REALIZADA") // AGENDADA | REALIZADA | CANCELADA
+  notes     String?
+
+  liderId   String?
+  lider     Contact? @relation("ReuniaoLider", fields: [liderId], references: [id])
+
+  anfitrioes ReuniaoAnfitriao[]
+  presentes  ReuniaoPresente[]
+  avaliacoes ReuniaoAvaliacao[]
+  conversas  Conversation[]     @relation("ReuniaoConversas")
+  campaigns  Campaign[]         @relation("CampaignReuniaoOrigin")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([dataHora])
+  @@index([liderId])
+}
+
+model ReuniaoAnfitriao {
+  id        String  @id @default(cuid())
+  reuniaoId String
+  reuniao   Reuniao @relation(fields: [reuniaoId], references: [id], onDelete: Cascade)
+  contactId String
+  contact   Contact @relation("ReuniaoAnfitrioes", fields: [contactId], references: [id])
+}
+
+model ReuniaoPresente {
+  id        String   @id @default(cuid())
+  reuniaoId String
+  reuniao   Reuniao  @relation(fields: [reuniaoId], references: [id], onDelete: Cascade)
+  contactId String?
+  contact   Contact? @relation("ReuniaoPresentes", fields: [contactId], references: [id])
+  nome      String?   // entrada manual
+  telefone  String?   // entrada manual
+  createdAt DateTime  @default(now())
+}
+
+model ReuniaoAvaliacao {
+  id            String   @id @default(cuid())
+  reuniaoId     String
+  reuniao       Reuniao  @relation(fields: [reuniaoId], references: [id], onDelete: Cascade)
+  slot          Int      // 1, 2 ou 3
+  avaliadorId   String?
+  avaliador     Contact? @relation("ReuniaoAvaliadores", fields: [avaliadorId], references: [id])
+  avaliadorNome String?
+  atencao       Int      @default(0)  // 0–5
+  interacao     Int      @default(0)  // 0–5
+  obs           String?
+}
+
+model DispatchResult {
+  id          String   @id @default(cuid())
+  dispatchId  String
+  dispatch    Dispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  contactId   String
+  contactName String
+  phone       String
+  success     Boolean  @default(false)
+  error       String?
+  sentAt      DateTime @default(now())
+}
+
+// ─── Campanhas ─────────────────────────────────────────────────────────────────
+
+model Campaign {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  goal            String?
+  status          String   @default("ATIVA")     // ATIVA | PAUSADA | CONCLUIDA
+  messageTemplate String                          // suporta {{nome}}, {{primeiroNome}}, {{telefone}}, {{lider}}
+  mediaUrl        String?                         // /campaigns/uuid.ext (servido em public/)
+  mediaType       String?                         // image | video
+  linkUrl         String?                         // link com prévia
+  defaultDelayMs  Int      @default(2000)         // intervalo entre envios em modo lote (futuro)
+
+  reuniaoOriginId String?
+  reuniaoOrigin   Reuniao? @relation("CampaignReuniaoOrigin", fields: [reuniaoOriginId], references: [id], onDelete: SetNull)
+  reuniaoMode     String?                          // anfitrioes | presentes | all (quando origem é reunião)
+
+  contacts        CampaignContact[]
+  responseTags    CampaignResponseTag[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+  @@index([reuniaoOriginId])
+}
+
+model CampaignContact {
+  id            String    @id @default(cuid())
+  campaignId    String
+  campaign      Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contactId     String
+  contact       Contact   @relation("CampaignTargetContact", fields: [contactId], references: [id], onDelete: Cascade)
+
+  status        String    @default("PENDENTE")    // PENDENTE | ENVIADO | RESPONDEU | IGNOROU
+  assignedToId  String?                            // líder/coordenador atribuído (override do parent)
+  assignedTo    Contact?  @relation("CampaignAssignedTo", fields: [assignedToId], references: [id])
+  sentById      String?
+  sentBy        Contact?  @relation("CampaignSentBy", fields: [sentById], references: [id])
+  sentAt        DateTime?
+  sentMessage   String?                            // mensagem final com variáveis resolvidas
+
+  responseTagId String?
+  responseTag   CampaignResponseTag? @relation(fields: [responseTagId], references: [id])
+  respondedAt   DateTime?
+  notes         String?
+
+  addedAt       DateTime  @default(now())
+
+  @@unique([campaignId, contactId])
+  @@index([campaignId, status])
+  @@index([contactId])
+}
+
+model CampaignResponseTag {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  label      String
+  color      String   @default("#6366f1")
+  bgColor    String   @default("#eef2ff")
+  order      Int      @default(0)
+  contacts   CampaignContact[]
+
+  @@index([campaignId])
+}
+
+// ─── Anotações e campos personalizados (usado no Painel 360) ───────────────────
+// Tabelas presentes neste schema apenas pra Prisma reconhecê-las e não tentar
+// dropar no `db push`. A UI/CRUD dessas entidades vive no projeto painel-360.
+
+model ContactNote {
+  id        String   @id @default(cuid())
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  body      String
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([contactId])
+  @@index([createdAt])
+}
+
+model ContactCustomField {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  label     String
+  type      String   @default("text")
+  options   String[] @default([])
+  required  Boolean  @default(false)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([position])
+}
+
+model BirthdayMessage {
+  id        String   @id @default(cuid())
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  year      Int      // ano em que foi enviada (evita duplicar no mesmo ano)
+  message   String
+  sentAt    DateTime @default(now())
+
+  @@unique([contactId, year])
+  @@index([sentAt])
+}
