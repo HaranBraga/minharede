@@ -3,7 +3,7 @@ RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+RUN npm install --no-audit --no-fund
 
 COPY . .
 RUN npx prisma generate
