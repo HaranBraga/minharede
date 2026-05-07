@@ -1,8 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ApoiadorForm } from "@/components/ApoiadorForm";
-import toast from "react-hot-toast";
 
 /**
  * Landing pública.
@@ -13,6 +12,14 @@ import toast from "react-hot-toast";
  *   - sem param         → redireciona pra /login
  */
 export default function HomePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-gray-400">Carregando...</div>}>
+      <HomeInner />
+    </Suspense>
+  );
+}
+
+function HomeInner() {
   const router = useRouter();
   const sp = useSearchParams();
   const liderSlug     = sp.get("lider");
