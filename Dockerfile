@@ -27,4 +27,4 @@ EXPOSE 3000
 # Sincroniza schema (sem --accept-data-loss; ver schema do conect-crm).
 # O schema é compartilhado — se o CRM já estiver com tudo, o db push aqui
 # é no-op. Se o minha-rede subir antes, ele cria as tabelas.
-CMD ["sh", "-c", "npx prisma db push && node scripts/startup.js && npm start"]
+CMD ["sh", "-c", "npx prisma db execute --file ./prisma/migrate-shared.sql --schema ./prisma/schema.prisma && npx prisma db push && node scripts/startup.js && npm start"]
