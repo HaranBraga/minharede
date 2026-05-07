@@ -1,49 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth-edge";
 
-// Caminhos públicos (não exigem login).
-// O FORMULÁRIO DE CADASTRO PÚBLICO (?lider=, ?coord=, ?coord_form=) cai
-// em "/" e é público — autenticação só é exigida em /dashboard, /admin
-// e nas rotas de gestão.
-const PUBLIC_PATHS = [
-  "/",                       // landing/formulário público
-  "/login",
-  "/api/auth/login",
-  "/api/auth/me",
-  "/api/auth/logout",
-  "/api/public",             // qualquer rota pública /api/public/*
-];
-
-function isPublic(path: string): boolean {
-  return PUBLIC_PATHS.some(p => path === p || path.startsWith(p + "/"));
-}
-
-function deny(req: NextRequest, kind: "auth" | "admin") {
-  const path = req.nextUrl.pathname;
-  if (path.startsWith("/api/")) {
-    const status = kind === "auth" ? 401 : 403;
-    return NextResponse.json({ error: kind === "auth" ? "Não autenticado" : "Apenas admin" }, { status });
-  }
-  if (kind === "auth") {
-    const url = new URL("/login", req.url);
-    url.searchParams.set("from", path);
-    return NextResponse.redirect(url);
-  }
-  return NextResponse.redirect(new URL("/dashboard", req.url));
-}
-
+/**
+ * - "/" e "/api/submit" são públicos (formulário do apoiador, etc).
+ * - "/api/admin/*" exige sessão type=admin.
+ * - "/api/coord/*" pode ser admin OU coord.
+ * - "/api/leaders" e "/api/coordinators" liberados pra admin OU coord
+ *   (cada handler aplica o filtro/escopo apropriado).
+ */
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
-  if (isPublic(path)) return NextResponse.next();
+
+  // Páginas: tudo público (a SPA controla qual UI mostrar)
+  if (!path.startsWith("/api/")) return NextResponse.next();
+
+  // Rotas API públicas
+  if (path === "/api/submit") return NextResponse.next();
+  if (path === "/api/admin/login")  return NextResponse.next();
+  if (path === "/api/admin/logout") return NextResponse.next();
+  if (path === "/api/coord/login")  return NextResponse.next();
+  if (path === "/api/coord/logout") return NextResponse.next();
+  // Endpoints de leitura usados pelo login do coord (lista de coords pra clicar)
+  if (path === "/api/coordinators" && req.method === "GET") return NextResponse.next();
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!token) return deny(req, "auth");
-  const session = await verifySession(token);
-  if (!session) return deny(req, "auth");
+  const session = token ? await verifySession(token) : null;
 
-  // Rotas /admin e /api/admin* exigem isAdmin
-  if ((path.startsWith("/admin") || path.startsWith("/api/admin")) && !session.isAdmin) {
-    return deny(req, "admin");
+  if (!session) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
+  // /api/admin/* exige admin
+  if (path.startsWith("/api/admin/") && session.type !== "admin") {
+    return NextResponse.json({ error: "Apenas admin" }, { status: 403 });
   }
 
   return NextResponse.next();

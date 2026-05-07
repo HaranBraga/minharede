@@ -3,3 +3,8 @@
 @tailwind utilities;
 
 html, body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}

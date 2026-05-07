@@ -7,21 +7,19 @@ function getSecret(): Uint8Array {
   if (process.env.NODE_ENV === "production" && (!raw || raw.length < 32)) {
     throw new Error(
       "AUTH_SECRET não configurada (ou muito curta). Em produção, defina " +
-      "uma string aleatória de pelo menos 32 caracteres. Use o MESMO valor " +
-      "do conect-crm e painel-360 pra cookie compartilhado se desejar SSO.",
+      "uma string aleatória de pelo menos 32 caracteres.",
     );
   }
   return new TextEncoder().encode(raw || "dev-secret-change-me-in-production");
 }
 
-export type SessionPayload = {
-  uid: string;
-  isAdmin: boolean;
-  contactId?: string | null;
-  // levelMin do roleLevel — quando criado, salva o level do role do user
-  // pra middleware/UI checar permissão de criar nível abaixo sem ir ao banco.
-  roleLevel?: number | null;
-};
+/**
+ * Sessão pode ser de admin (login com senha) ou de coordenador
+ * (login só pelo nome, igual ao formelider antigo).
+ */
+export type AdminSession = { type: "admin" };
+export type CoordSession = { type: "coord"; contactId: string; slug: string; name: string };
+export type SessionPayload = AdminSession | CoordSession;
 
 export async function signSession(payload: SessionPayload): Promise<string> {
   return new SignJWT({ ...payload })
