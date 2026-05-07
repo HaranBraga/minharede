@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
-import { getCoordRoleId, publicLink, uniqueSlug } from "@/lib/rede";
+import { getCurrentUser, canManageContact } from "@/lib/auth";
+import { publicLink, uniqueSlug } from "@/lib/rede";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -12,8 +12,11 @@ function baseUrl(req: NextRequest): string {
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getSession();
-  if (session?.type !== "admin") return NextResponse.json({ error: "Apenas admin" }, { status: 403 });
+  const me = await getCurrentUser();
+  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!await canManageContact(me, params.id)) {
+    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  }
 
   const { name } = await req.json().catch(() => ({}));
   if (!name?.trim()) return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
@@ -25,7 +28,6 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     data: { name: trimmed, publicSlug: newSlug },
     select: { id: true, name: true, publicSlug: true },
   });
-
   const base = baseUrl(req);
   return NextResponse.json({
     id: updated.id, name: updated.name,
@@ -34,11 +36,12 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
-  const session = await getSession();
-  if (session?.type !== "admin") return NextResponse.json({ error: "Apenas admin" }, { status: 403 });
+  const me = await getCurrentUser();
+  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!await canManageContact(me, params.id)) {
+    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+  }
 
-  // Líderes vinculados não são excluídos — apenas desvinculados (parentId=null)
-  const coordRole = await getCoordRoleId();
   await prisma.contact.updateMany({
     where: { parentId: params.id },
     data: { parentId: null },

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth";
+import { getCurrentUser, descendantContactIds, rolesAllowedToCreate } from "@/lib/auth";
 import { getCoordRoleId, placeholderPhone, publicLink, uniqueSlug } from "@/lib/rede";
 
 export const dynamic = "force-dynamic";
@@ -13,18 +13,21 @@ function baseUrl(req: NextRequest): string {
 
 /**
  * GET /api/coordinators
- *  - admin: lista tudo
- *  - coord logado: lista só ele mesmo (pra UI conseguir mostrar nome no header)
- *  - sem sessão: lista pública (usado no login do coord pra clicar)
- *
- * Resposta: { data: [{ id, name, link }] }
+ *  - admin/coord grupo: lista todos
+ *  - coord: lista só ele mesmo (pra UI de header)
+ *  - líder: nada (vai aparecer só o coord pai dele, sem necessidade)
  */
 export async function GET(req: NextRequest) {
-  const coordRole = await getCoordRoleId();
-  const session = await getSession();
+  const me = await getCurrentUser();
+  if (!me) return NextResponse.json({ data: [] });
 
-  let where: any = { roleId: coordRole };
-  if (session?.type === "coord") where = { id: session.contactId };
+  const coordRole = await getCoordRoleId();
+  const where: any = { roleId: coordRole };
+
+  const allowed = await descendantContactIds(me);
+  if (allowed !== "all") {
+    where.id = { in: allowed };
+  }
 
   const rows = await prisma.contact.findMany({
     where,
@@ -34,20 +37,25 @@ export async function GET(req: NextRequest) {
   const base = baseUrl(req);
   return NextResponse.json({
     data: rows.map(r => ({
-      id: r.id,
-      name: r.name,
+      id: r.id, name: r.name,
       link: publicLink(base, "coord", r.publicSlug ?? r.name),
     })),
   });
 }
 
 /**
- * POST /api/coordinators (admin only)
- * Body: { name, link } — link é ignorado (geramos do slug).
+ * POST /api/coordinators
+ *  - admin/coord grupo: cria coord
+ *  - outros: 403
  */
 export async function POST(req: NextRequest) {
-  const session = await getSession();
-  if (session?.type !== "admin") return NextResponse.json({ error: "Apenas admin" }, { status: 403 });
+  const me = await getCurrentUser();
+  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
+  const allowed = rolesAllowedToCreate(me);
+  if (allowed.minLevel > 1) {
+    return NextResponse.json({ error: "Você não tem permissão pra criar coordenadores" }, { status: 403 });
+  }
 
   const { name } = await req.json().catch(() => ({}));
   if (!name?.trim()) return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
@@ -55,12 +63,14 @@ export async function POST(req: NextRequest) {
   const coordRole = await getCoordRoleId();
   const trimmed = String(name).trim();
 
-  // Já existe alguém com esse nome em coord?
   const existing = await prisma.contact.findFirst({
     where: { roleId: coordRole, name: { equals: trimmed, mode: "insensitive" } },
     select: { id: true },
   });
   if (existing) return NextResponse.json({ error: "Coordenador já existe no sistema." }, { status: 400 });
+
+  // parent = se admin/coord grupo, null. Caso contrário, contactId do user.
+  const parentId = (me.isAdmin || me.roleLevel === 0) ? null : me.contactId;
 
   const slug = await uniqueSlug(trimmed);
   const created = await prisma.contact.create({
@@ -69,6 +79,7 @@ export async function POST(req: NextRequest) {
       phone: placeholderPhone(),
       publicSlug: slug,
       roleId: coordRole,
+      parentId,
       source: "rede",
     },
     select: { id: true, name: true, publicSlug: true },

@@ -14,12 +14,16 @@ function getSecret(): Uint8Array {
 }
 
 /**
- * Sessão pode ser de admin (login com senha) ou de coordenador
- * (login só pelo nome, igual ao formelider antigo).
+ * Sessão padrão do ecossistema (mesma estrutura do conect-crm).
+ * Quem identifica a posição na rede é o User.contactId.
  */
-export type AdminSession = { type: "admin" };
-export type CoordSession = { type: "coord"; contactId: string; slug: string; name: string };
-export type SessionPayload = AdminSession | CoordSession;
+export type SessionPayload = {
+  uid: string;
+  isAdmin: boolean;
+  contactId: string | null;
+  /** Level do role do contato vinculado: 0=Coord Grupo, 1=Coord, 2=Líder, 3=Apoiador. */
+  roleLevel: number | null;
+};
 
 export async function signSession(payload: SessionPayload): Promise<string> {
   return new SignJWT({ ...payload })
