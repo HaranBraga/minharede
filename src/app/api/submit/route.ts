@@ -7,38 +7,45 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * Submit do formulário do apoiador (idêntico ao formelider antigo).
+ * Submit do formulário do apoiador.
  *
- * Body: campos do form + nome_lider/nome_coordenador (hidden).
+ * Body: campos do form + nome_lider/nome_coordenador (do query param).
  *
- * Comportamento:
- *  1. Cria Contact (source="apoiador-form") no Postgres com parentId
- *     apontando pro líder (ou coord, se não houver líder).
- *  2. Dispara o webhook externo em paralelo (mantém a automação atual).
+ * 1. Cria/atualiza Contact (source="apoiador-form") no Postgres com parentId
+ *    apontando pro líder (ou coord, se não houver líder).
+ * 2. Dispara o webhook externo (WEBHOOK_FORM_URL) — aguarda resposta pra
+ *    poder logar erro se houver, mas timeout curto (5s) pra não travar.
  *
- * Sempre retorna 200 mesmo se uma das duas etapas falhar — formulário
- * público não pode dar erro pro usuário final por questão de webhook.
+ * Retorna { ok: true, savedToDb: bool, webhookSent: bool } pra debug.
  */
 export async function POST(req: NextRequest) {
+  const ip = getClientIp(req);
+  const rl = checkRateLimit(`submit:${ip}`, { limit: 15, windowMs: 60_000 });
+  if (!rl.ok) {
+    return NextResponse.json({ error: "Muitas tentativas. Aguarde um minuto." }, { status: 429 });
+  }
+
+  let body: any;
   try {
-    const ip = getClientIp(req);
-    const rl = checkRateLimit(`submit:${ip}`, { limit: 15, windowMs: 60_000 });
-    if (!rl.ok) {
-      return NextResponse.json({ error: "Muitas tentativas. Aguarde um minuto." }, { status: 429 });
-    }
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Body inválido" }, { status: 400 });
+  }
 
-    const body = await req.json();
-    const {
-      nome, telefone, data_nascimento, genero,
-      rua, bairro, cidade, zona,
-      nome_lider, nome_coordenador,
-    } = body;
+  const {
+    nome, telefone, data_nascimento, genero,
+    rua, bairro, cidade, zona,
+    nome_lider, nome_coordenador,
+  } = body ?? {};
 
-    if (!nome?.trim()) {
-      return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
-    }
+  if (!nome?.trim()) {
+    return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
+  }
 
-    // Resolve parent (líder primeiro, coord como fallback)
+  // ── 1. Postgres ────────────────────────────────────────────────────
+  let savedToDb = false;
+  let savedContactId: string | null = null;
+  try {
     let parentId: string | null = null;
     const slugLookup = (nome_lider || nome_coordenador || "").trim();
     if (slugLookup) {
@@ -54,33 +61,30 @@ export async function POST(req: NextRequest) {
       parentId = parent?.id ?? null;
     }
 
-    // Role apoiador
     const apoiadorRole = await prisma.personRole.findFirst({
       where: { OR: [{ key: "APOIADOR" }, { id: "role-apoiador" }] },
     }) || await prisma.personRole.findFirst({ orderBy: { level: "desc" } });
     if (!apoiadorRole) {
-      return NextResponse.json({ error: "Cargo de apoiador não configurado" }, { status: 500 });
-    }
+      console.error("[submit] Cargo de apoiador não configurado");
+    } else {
+      const phoneDigits = String(telefone ?? "").replace(/\D/g, "");
+      const phoneWith55 = phoneDigits.startsWith("55") ? phoneDigits : (phoneDigits ? `55${phoneDigits}` : "");
 
-    // Telefone normalizado (com 55)
-    const phoneDigits = String(telefone ?? "").replace(/\D/g, "");
-    const phoneWith55 = phoneDigits.startsWith("55") ? phoneDigits : `55${phoneDigits}`;
+      let nascimento: Date | null = null;
+      if (data_nascimento) {
+        const m = String(data_nascimento).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (m) {
+          const d = new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00Z`);
+          if (!isNaN(d.getTime())) nascimento = d;
+        }
+      }
 
-    // Data DD/MM/AAAA
-    let nascimento: Date | null = null;
-    if (data_nascimento) {
-      const m = String(data_nascimento).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-      if (m) nascimento = new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00Z`);
-    }
-
-    // Save no Postgres (não bloqueia o formulário se falhar — webhook continua)
-    try {
-      const existing = phoneWith55.length > 4
+      const existing = phoneWith55.length >= 12
         ? await prisma.contact.findUnique({ where: { phone: phoneWith55 } })
         : null;
 
       if (existing) {
-        await prisma.contact.update({
+        const updated = await prisma.contact.update({
           where: { id: existing.id },
           data: {
             name: String(nome).trim(),
@@ -93,12 +97,13 @@ export async function POST(req: NextRequest) {
             ...(nascimento && { dataNascimento: nascimento }),
           },
         });
+        savedContactId = updated.id;
       } else {
         const slug = await uniqueSlug(String(nome));
-        await prisma.contact.create({
+        const created = await prisma.contact.create({
           data: {
             name: String(nome).trim(),
-            phone: phoneWith55 || `placeholder-${Date.now()}`,
+            phone: phoneWith55 || `placeholder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             publicSlug: slug,
             roleId: apoiadorRole.id,
             parentId,
@@ -111,24 +116,46 @@ export async function POST(req: NextRequest) {
             dataNascimento: nascimento,
           },
         });
+        savedContactId = created.id;
+      }
+      savedToDb = true;
+    }
+  } catch (err) {
+    console.error("[submit] erro Postgres:", err);
+  }
+
+  // ── 2. Webhook externo ─────────────────────────────────────────────
+  let webhookSent = false;
+  const webhookUrl = process.env.WEBHOOK_FORM_URL;
+  if (webhookUrl) {
+    try {
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), 5000);
+      const r = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timeout);
+      webhookSent = r.ok;
+      if (!r.ok) {
+        console.error(`[submit] webhook retornou ${r.status}: ${await r.text().catch(() => "")}`);
       }
     } catch (err) {
-      console.error("[submit] erro salvando Contact:", err);
+      console.error("[submit] erro webhook:", err);
     }
-
-    // Webhook externo (mantém automação atual). Fire-and-forget.
-    const webhookUrl = process.env.WEBHOOK_FORM_URL;
-    if (webhookUrl) {
-      fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }).catch(err => console.error("[submit] webhook:", err));
-    }
-
-    return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    console.error("[submit]", err);
-    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+  } else {
+    console.warn("[submit] WEBHOOK_FORM_URL não configurada");
   }
+
+  // Sucesso visual pro usuário se PELO MENOS UM dos dois funcionou
+  if (!savedToDb && !webhookSent) {
+    return NextResponse.json(
+      { error: "Não foi possível registrar o cadastro. Tente novamente em alguns instantes." },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, savedToDb, webhookSent, contactId: savedContactId });
 }

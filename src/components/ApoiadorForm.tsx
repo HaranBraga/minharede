@@ -74,13 +74,18 @@ export function ApoiadorForm({ target, liderSlug, coordSlug }: Props) {
         nome_lider: liderSlug || "",
         nome_coordenador: coordSlug || target.coordinator || "",
       };
-      await fetch("/api/submit", {
+      const r = await fetch("/api/submit", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        toast.error(d.error || "Erro ao enviar. Tente novamente.");
+        return;
+      }
       setDone(true);
     } catch {
-      toast.error("Erro ao enviar. Tente novamente.");
+      toast.error("Erro ao enviar. Verifique sua conexão e tente novamente.");
     } finally {
       setBusy(false);
     }
