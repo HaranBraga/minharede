@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Plus, Search, Trash2, Edit2, Phone, MapPin, ChevronRight, Home, Users,
-  Link as LinkIcon, Copy,
+  Link as LinkIcon, Copy, Globe,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { BottomSheet } from "./BottomSheet";
@@ -12,29 +12,43 @@ import { PersonFormFields, personFormToPayload, initialPersonForm, type PersonFo
 interface Role { id: string; key: string; label: string; color: string; bgColor: string; level: number; }
 interface Contact {
   id: string; name: string; phone: string; publicSlug: string | null; parentId: string | null;
-  cidade?: string | null; bairro?: string | null;
+  cidade?: string | null;
   role: Role;
   _count: { children: number };
 }
-interface MemberSession {
-  type: "member";
-  contactId: string; slug: string; name: string;
-  roleLevel: number; roleLabel: string;
-  roleColor?: string; roleBgColor?: string;
+
+/**
+ * Sessão unificada — funciona tanto pra member (member dashboard) quanto
+ * pra admin (admin dashboard).
+ *
+ * - isAdmin=true + contactId=null → admin vê toda a rede (raiz = top-level)
+ * - isAdmin=false + contactId=X   → member vê a rede dele (raiz = X)
+ */
+export interface ExplorerSession {
+  isAdmin: boolean;
+  contactId: string | null;
+  name: string;
+  slug: string | null;
+  roleLevel: number;        // -1 pra admin (criar tudo)
+  roleLabel?: string;
+  roleColor?: string;
+  roleBgColor?: string;
 }
 
 const LEVEL_LABEL_SG: Record<number, string> = {
   0: "Coordenador de Grupo", 1: "Coordenador", 2: "Líder", 3: "Apoiador",
 };
 
-export function MemberDashboard({ session }: { session: MemberSession }) {
+export function NetworkExplorer({ session }: { session: ExplorerSession }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Navegação drill-down: stack de contactIds visitados (último = atual)
-  const [path, setPath] = useState<string[]>([session.contactId]);
-  const currentId = path[path.length - 1];
+  // path: stack de contactIds. Empty array = raiz da rede inteira (admin).
+  // Pra member: começa com [contactId] (vê próprios filhos). Pra admin: [] (vê top-level).
+  const [path, setPath] = useState<string[]>(
+    session.contactId ? [session.contactId] : []
+  );
+  const currentId: string | null = path[path.length - 1] ?? null;
 
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -43,12 +57,8 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, rolesRes] = await Promise.all([
-        fetch("/api/rede"),
-        fetch("/api/roles"),
-      ]);
+      const r = await fetch("/api/rede");
       if (r.ok) setContacts((await r.json()).contacts ?? []);
-      if (rolesRes.ok) setRoles(await rolesRes.json());
     } finally { setLoading(false); }
   }, []);
 
@@ -60,17 +70,20 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
     return m;
   }, [contacts]);
 
-  // Contato sendo visualizado (dados completos) — pode ser o próprio user ou um descendente
-  const currentContact: { id: string; name: string; slug: string | null; role?: Role | null; level: number } = useMemo(() => {
+  // Contato sendo visualizado
+  const currentContact: { id: string | null; name: string; slug: string | null; role: Role | null; level: number } = useMemo(() => {
+    if (currentId === null) {
+      return { id: null, name: "Toda a rede", slug: null, role: null, level: -1 };
+    }
     if (currentId === session.contactId) {
       return { id: session.contactId, name: session.name, slug: session.slug, role: null, level: session.roleLevel };
     }
     const c = contactById.get(currentId);
     if (c) return { id: c.id, name: c.name, slug: c.publicSlug, role: c.role, level: c.role.level };
-    return { id: session.contactId, name: session.name, slug: session.slug, role: null, level: session.roleLevel };
+    return { id: currentId, name: "?", slug: null, role: null, level: 99 };
   }, [currentId, session, contactById]);
 
-  // Filhos diretos do contato atual
+  // Filhos diretos do nó atual (currentId === null → top-level)
   const children = useMemo(() => {
     let list = contacts.filter(c => c.parentId === currentId);
     const q = search.trim().toLowerCase();
@@ -81,8 +94,9 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
     });
   }, [contacts, currentId, search]);
 
-  // Subárvore do contato atual (recursivo) pra contar total de descendentes
+  // Total descendentes recursivo
   const descendantCount = useMemo(() => {
+    if (currentId === null) return contacts.length;
     const visited = new Set<string>();
     let frontier = [currentId];
     let total = 0;
@@ -102,37 +116,41 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
     return total;
   }, [contacts, currentId]);
 
-  // Cargos que o user pode criar abaixo do contato atual.
-  // Coord Grupo (0): pode criar Coord/Líder/Apoiador abaixo dele
-  // Coord (1): pode criar Líder/Apoiador (líder OU apoiador direto)
-  // Líder (2): só Apoiador
-  // Apoiador (3): nada (folha)
-  // PLUS: nunca abaixo do nível do próprio user.
+  // Cargos que o user pode criar abaixo do contato atual
   const availableLevels = useMemo(() => {
-    const minByCurrent = currentContact.level + 1; // estritamente abaixo do nó atual
-    const minBySession = session.roleLevel + 1;    // estritamente abaixo do user
+    const minByCurrent = currentContact.level + 1;
+    const minBySession = session.roleLevel + 1;
     const min = Math.max(minByCurrent, minBySession);
-    return [0, 1, 2, 3].filter(lv => lv >= min);
+    return [0, 1, 2, 3].filter(lv => lv >= Math.max(0, min));
   }, [currentContact.level, session.roleLevel]);
   const canCreateHere = availableLevels.length > 0;
 
-  // Breadcrumb (max 3 niveis pra não estourar)
-  const breadcrumb = useMemo(() => path.map(id => {
-    if (id === session.contactId) return { id, name: "Você", isRoot: true };
-    const c = contactById.get(id);
-    return { id, name: c?.name ?? "?", isRoot: false };
-  }), [path, contactById, session]);
+  // Breadcrumb
+  const breadcrumb = useMemo(() => {
+    const items: { id: string | null; name: string; isRoot: boolean }[] = [];
+    if (session.isAdmin) {
+      items.push({ id: null, name: "Toda a rede", isRoot: true });
+    }
+    path.forEach(id => {
+      if (id === session.contactId) {
+        items.push({ id, name: session.isAdmin ? (contactById.get(id)?.name ?? "?") : "Você", isRoot: !session.isAdmin });
+      } else {
+        const c = contactById.get(id);
+        items.push({ id, name: c?.name ?? "?", isRoot: false });
+      }
+    });
+    return items;
+  }, [path, contactById, session]);
 
-  function navigateTo(id: string) {
+  function navigateTo(id: string | null) {
     setSearch("");
-    if (id === session.contactId) { setPath([session.contactId]); return; }
-    // Se já está no path, trunca até esse id
+    if (id === null) { setPath([]); return; }
     const idx = path.indexOf(id);
     if (idx >= 0) { setPath(path.slice(0, idx + 1)); return; }
     setPath([...path, id]);
   }
   function navigateUp() {
-    if (path.length > 1) setPath(path.slice(0, -1));
+    if (path.length > 0) setPath(path.slice(0, -1));
   }
 
   async function deleteContact(c: Contact) {
@@ -148,7 +166,7 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
       {/* Breadcrumb */}
       <nav className="flex items-center gap-1 overflow-x-auto -mx-1 px-1 pb-1">
         {breadcrumb.map((b, i) => (
-          <div key={b.id} className="flex items-center gap-1 shrink-0">
+          <div key={b.id ?? "root"} className="flex items-center gap-1 shrink-0">
             {i > 0 && <ChevronRight size={12} className="text-gray-400" />}
             <button onClick={() => navigateTo(b.id)}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex items-center gap-1 ${
@@ -156,7 +174,7 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
                   ? "bg-brand-600 text-white"
                   : "bg-white border border-gray-200 text-gray-600 active:bg-gray-50"
               }`}>
-              {b.isRoot && <Home size={11} />}
+              {b.isRoot && (b.id === null ? <Globe size={11} /> : <Home size={11} />)}
               {b.name}
             </button>
           </div>
@@ -166,21 +184,27 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
       {/* Header do nó atual */}
       <section className="bg-white rounded-2xl border border-gray-200 p-4">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-base font-bold shrink-0"
-            style={{
-              backgroundColor: currentContact.role?.bgColor ?? session.roleBgColor ?? "#e0e7ff",
-              color:           currentContact.role?.color   ?? session.roleColor   ?? "#4f46e5",
-            }}>
-            {currentContact.name[0]?.toUpperCase()}
-          </div>
+          {currentId === null ? (
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+              <Globe size={22} />
+            </div>
+          ) : (
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-base font-bold shrink-0"
+              style={{
+                backgroundColor: currentContact.role?.bgColor ?? session.roleBgColor ?? "#e0e7ff",
+                color:           currentContact.role?.color   ?? session.roleColor   ?? "#4f46e5",
+              }}>
+              {currentContact.name[0]?.toUpperCase()}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <p className="font-bold text-gray-900 text-base truncate">{currentContact.name}</p>
             <p className="text-xs text-gray-500">
-              {LEVEL_LABEL_SG[currentContact.level] ?? "—"}
-              {currentId !== session.contactId && <span> · da sua rede</span>}
+              {currentId === null ? "Visão de administrador" : (LEVEL_LABEL_SG[currentContact.level] ?? "—")}
+              {currentId !== session.contactId && currentId !== null && <span> · da sua rede</span>}
             </p>
           </div>
-          {path.length > 1 && (
+          {path.length > (session.isAdmin ? 0 : 1) && (
             <button onClick={navigateUp}
               className="text-xs text-gray-500 active:text-gray-800 px-2 py-1 border border-gray-200 rounded-lg shrink-0">
               ← voltar
@@ -190,17 +214,23 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
 
         <div className="grid grid-cols-2 gap-2 mt-4">
           <div className="bg-gray-50 rounded-xl p-3">
-            <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 flex items-center gap-1"><Users size={10} />Diretos</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{contacts.filter(c => c.parentId === currentId).length}</p>
+            <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 flex items-center gap-1">
+              <Users size={10} />Diretos
+            </p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">
+              {contacts.filter(c => c.parentId === currentId).length}
+            </p>
           </div>
           <div className="bg-gray-50 rounded-xl p-3">
-            <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500">Total na rede</p>
+            <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500">
+              {currentId === null ? "Total cadastrados" : "Total na rede"}
+            </p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{descendantCount}</p>
           </div>
         </div>
 
-        {/* Link público de cadastro pra apoiadores */}
-        {currentContact.level <= 2 && currentContact.slug && (() => {
+        {/* Link público pra apoiador se cadastrar */}
+        {currentContact.level >= 0 && currentContact.level <= 2 && currentContact.slug && (() => {
           const kind = currentContact.level <= 1 ? "coord_form" : "lider";
           const url  = `${typeof window !== "undefined" ? window.location.origin : ""}/?${kind}=${encodeURIComponent(currentContact.slug)}`;
           return (
@@ -217,19 +247,21 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
                 </button>
               </div>
               <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
-                Envie esse link pra novos apoiadores. Eles preenchem o formulário e entram automaticamente na rede de <strong>{currentContact.name}</strong>.
+                Cadastros via esse link entram automaticamente sob <strong>{currentContact.name}</strong>.
               </p>
             </div>
           );
         })()}
       </section>
 
-      {/* Busca + título da seção */}
+      {/* Busca + título */}
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-gray-700">
-          {currentId === session.contactId ? "Sua rede direta" : `Rede de ${currentContact.name}`}
+          {currentId === null ? "Top da rede" : `Rede de ${currentContact.name}`}
         </h2>
-        <span className="text-xs text-gray-400">{children.length} {children.length === 1 ? "pessoa" : "pessoas"}</span>
+        <span className="text-xs text-gray-400">
+          {children.length} {children.length === 1 ? "pessoa" : "pessoas"}
+        </span>
       </div>
 
       {contacts.filter(c => c.parentId === currentId).length > 0 && (
@@ -241,7 +273,6 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
         </div>
       )}
 
-      {/* Lista */}
       {loading ? (
         <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
       ) : children.length === 0 ? (
@@ -260,7 +291,6 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
         </div>
       )}
 
-      {/* FAB */}
       {canCreateHere && children.length > 0 && (
         <button onClick={() => setShowCreate(true)}
           className="fixed bottom-6 right-6 w-14 h-14 bg-brand-600 active:bg-brand-700 text-white rounded-full shadow-xl flex items-center justify-center z-30">
@@ -316,7 +346,9 @@ function ChildRow({ contact, onOpen, onEdit, onDelete }: {
           </div>
           <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
             {!isApoiad && contact._count.children > 0 && (
-              <span className="font-semibold text-brand-600">{contact._count.children} {contact._count.children === 1 ? "pessoa" : "pessoas"}</span>
+              <span className="font-semibold text-brand-600">
+                {contact._count.children} {contact._count.children === 1 ? "pessoa" : "pessoas"}
+              </span>
             )}
             {phoneShown && <span className="flex items-center gap-0.5"><Phone size={9} />{phoneShown}</span>}
             {contact.cidade && <span className="flex items-center gap-0.5"><MapPin size={9} />{contact.cidade}</span>}
@@ -355,9 +387,7 @@ function EmptyState({ availableLevels, canCreate, onCreate }: {
       </div>
       <p className="font-semibold text-gray-700">Rede vazia</p>
       <p className="text-xs text-gray-500 mt-1 mb-5">
-        {canCreate
-          ? `Adicione ${desc} abaixo.`
-          : `Você não tem permissão pra adicionar nesse nível.`}
+        {canCreate ? `Adicione ${desc} abaixo.` : "Você não tem permissão pra adicionar nesse nível."}
       </p>
       {canCreate && (
         <button onClick={onCreate}
@@ -370,14 +400,13 @@ function EmptyState({ availableLevels, canCreate, onCreate }: {
 }
 
 function CreateBelow({ parentId, parentName, availableLevels, onClose, onSaved }: {
-  parentId: string;
+  parentId: string | null;
   parentName: string;
   availableLevels: number[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [form, setForm] = useState<PersonFormState>(initialPersonForm);
-  // Default: o cargo MAIS BAIXO disponível (apoiador se possível — caso comum)
   const [selectedLevel, setSelectedLevel] = useState<number>(
     availableLevels.length > 0 ? availableLevels[availableLevels.length - 1] : 3
   );
@@ -394,8 +423,8 @@ function CreateBelow({ parentId, parentName, availableLevels, onClose, onSaved }
       if (selectedLevel <= 1) endpoint = "/api/coordinators";
       else if (selectedLevel === 2) {
         endpoint = "/api/leaders";
-        payload.coordinator = parentName;
-      } else {
+        if (parentId) payload.coordinator = parentName;
+      } else if (parentId) {
         payload.parentId = parentId;
       }
       const r = await fetch(endpoint, {
@@ -422,7 +451,7 @@ function CreateBelow({ parentId, parentName, availableLevels, onClose, onSaved }
       <BottomSheet open onClose={onSaved} title="Login criado!">
         <div className="space-y-4">
           <p className="text-sm text-gray-600">
-            <span className="font-semibold text-gray-900">{createdLogin.name}</span> foi adicionado(a) à sua rede com login automático.
+            <span className="font-semibold text-gray-900">{createdLogin.name}</span> foi adicionado(a) com login automático.
           </p>
           <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 space-y-2">
             <div>
@@ -473,7 +502,8 @@ function CreateBelow({ parentId, parentName, availableLevels, onClose, onSaved }
           </div>
         )}
 
-        <PersonFormFields form={form} setForm={setForm} />
+        <PersonFormFields form={form} setForm={setForm}
+          alwaysExpanded={selectedLevel === 3} />
 
         <div className="flex gap-2 pt-3 border-t border-gray-100 sticky bottom-0 bg-white -mx-5 px-5 py-3">
           <button type="button" onClick={onClose}

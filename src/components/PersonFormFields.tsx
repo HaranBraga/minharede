@@ -34,14 +34,17 @@ const lbl = "block text-xs font-medium text-gray-600 mb-1.5";
  * Campos básicos (nome + telefone obrigatórios) + seção "Mais dados (opcional)"
  * que expande email, nascimento, gênero, endereço.
  *
- * Uso: <PersonFormFields form={form} setForm={setForm} />
+ * Props:
+ *   - alwaysExpanded: mostra todos os campos abertos por padrão (usado pra
+ *     apoiador, que precisa ter cadastro completo igual ao formulário público).
  */
-export function PersonFormFields({ form, setForm, autoFocus = true }: {
+export function PersonFormFields({ form, setForm, autoFocus = true, alwaysExpanded = false }: {
   form: PersonFormState;
   setForm: (next: PersonFormState | ((prev: PersonFormState) => PersonFormState)) => void;
   autoFocus?: boolean;
+  alwaysExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(alwaysExpanded);
 
   function setField<K extends keyof PersonFormState>(k: K, v: PersonFormState[K]) {
     setForm(prev => ({ ...prev, [k]: v }));
@@ -55,17 +58,19 @@ export function PersonFormFields({ form, setForm, autoFocus = true }: {
           onChange={e => setField("name", e.target.value)} className={inp} />
       </div>
       <div>
-        <label className={lbl}>WhatsApp / Telefone * <span className="text-gray-400">11 dígitos</span></label>
+        <label className={lbl}>WhatsApp / Telefone * <span className="text-gray-400">DDD + número</span></label>
         <input required type="tel" inputMode="numeric" maxLength={11}
           value={form.phone} onChange={e => setField("phone", e.target.value.replace(/\D/g, "").slice(0, 11))}
-          placeholder="68999551835" className={inp} />
+          placeholder="Apenas números" className={inp} />
       </div>
 
-      <button type="button" onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center justify-between px-4 py-2.5 border border-dashed border-gray-200 rounded-xl text-sm text-gray-600 active:bg-gray-50">
-        <span className="font-medium">Mais dados (opcional)</span>
-        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      </button>
+      {!alwaysExpanded && (
+        <button type="button" onClick={() => setExpanded(e => !e)}
+          className="w-full flex items-center justify-between px-4 py-2.5 border border-dashed border-gray-200 rounded-xl text-sm text-gray-600 active:bg-gray-50">
+          <span className="font-medium">Mais dados (opcional)</span>
+          {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+      )}
 
       {expanded && (
         <div className="space-y-3 pt-1">

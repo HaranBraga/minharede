@@ -8,7 +8,7 @@ import {
   Search, Plus, Edit2, Trash2, Eye, EyeOff, Power, ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
-import { AdminNetworkView } from "@/components/AdminNetworkView";
+import { NetworkExplorer } from "@/components/NetworkExplorer";
 import { BottomSheet } from "@/components/BottomSheet";
 import { PersonFormFields, personFormToPayload, initialPersonForm, type PersonFormState } from "@/components/PersonFormFields";
 
@@ -46,7 +46,15 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-4">
-        {tab === "rede"  && <AdminNetworkView />}
+        {tab === "rede"  && (
+          <NetworkExplorer session={{
+            isAdmin: true,
+            contactId: null,
+            name: "Admin",
+            slug: null,
+            roleLevel: -1,
+          }} />
+        )}
         {tab === "users" && <UsersTab />}
       </main>
     </div>

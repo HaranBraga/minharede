@@ -108,7 +108,7 @@ export function ContactEditForm({ contactId, onClose, onSaved }: {
                 required={isApoiad}
                 value={form.phone}
                 onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, "").slice(0, 11) }))}
-                placeholder="68999551835" className={inp} />
+                placeholder="Apenas números" className={inp} />
             </div>
             <div>
               <label className={lbl}>E-mail</label>

@@ -83,9 +83,6 @@ function LoginInner() {
             </button>
           </form>
 
-          <p className="text-[11px] text-gray-400 text-center mt-5">
-            Senha padrão: <strong className="text-gray-600">123456</strong>. Troque após o primeiro acesso.
-          </p>
         </div>
       </div>
     </div>
