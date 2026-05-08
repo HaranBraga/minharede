@@ -14,6 +14,9 @@ FROM node:20-alpine AS runner
 RUN apk add --no-cache openssl
 WORKDIR /app
 ENV NODE_ENV=production
+# Silencia o aviso do Prisma sobre nova versão disponível (informativo,
+# não bloqueia nada). Upgrade pro 7.x exige migração planejada.
+ENV CHECKPOINT_DISABLE=1
 
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next ./.next
