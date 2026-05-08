@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Plus, Search, Trash2, Edit2, Phone, MapPin, ChevronRight, Home, Users,
+  Link as LinkIcon, Copy,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { BottomSheet } from "./BottomSheet";
@@ -60,13 +61,13 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
   }, [contacts]);
 
   // Contato sendo visualizado (dados completos) — pode ser o próprio user ou um descendente
-  const currentContact: { id: string; name: string; role?: Role | null; level: number } = useMemo(() => {
+  const currentContact: { id: string; name: string; slug: string | null; role?: Role | null; level: number } = useMemo(() => {
     if (currentId === session.contactId) {
-      return { id: session.contactId, name: session.name, role: null, level: session.roleLevel };
+      return { id: session.contactId, name: session.name, slug: session.slug, role: null, level: session.roleLevel };
     }
     const c = contactById.get(currentId);
-    if (c) return { id: c.id, name: c.name, role: c.role, level: c.role.level };
-    return { id: session.contactId, name: session.name, role: null, level: session.roleLevel };
+    if (c) return { id: c.id, name: c.name, slug: c.publicSlug, role: c.role, level: c.role.level };
+    return { id: session.contactId, name: session.name, slug: session.slug, role: null, level: session.roleLevel };
   }, [currentId, session, contactById]);
 
   // Filhos diretos do contato atual
@@ -101,12 +102,19 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
     return total;
   }, [contacts, currentId]);
 
-  // Cargo que o user pode criar nesse nível (filho do current)
-  const targetChildLevel = useMemo(() => {
-    // Cria sempre o nível imediatamente abaixo do contato atual
-    return Math.min(3, currentContact.level + 1);
-  }, [currentContact.level]);
-  const canCreateHere = targetChildLevel > session.roleLevel;
+  // Cargos que o user pode criar abaixo do contato atual.
+  // Coord Grupo (0): pode criar Coord/Líder/Apoiador abaixo dele
+  // Coord (1): pode criar Líder/Apoiador (líder OU apoiador direto)
+  // Líder (2): só Apoiador
+  // Apoiador (3): nada (folha)
+  // PLUS: nunca abaixo do nível do próprio user.
+  const availableLevels = useMemo(() => {
+    const minByCurrent = currentContact.level + 1; // estritamente abaixo do nó atual
+    const minBySession = session.roleLevel + 1;    // estritamente abaixo do user
+    const min = Math.max(minByCurrent, minBySession);
+    return [0, 1, 2, 3].filter(lv => lv >= min);
+  }, [currentContact.level, session.roleLevel]);
+  const canCreateHere = availableLevels.length > 0;
 
   // Breadcrumb (max 3 niveis pra não estourar)
   const breadcrumb = useMemo(() => path.map(id => {
@@ -190,6 +198,30 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
             <p className="text-2xl font-bold text-gray-900 mt-1">{descendantCount}</p>
           </div>
         </div>
+
+        {/* Link público de cadastro pra apoiadores */}
+        {currentContact.level <= 2 && currentContact.slug && (() => {
+          const kind = currentContact.level <= 1 ? "coord_form" : "lider";
+          const url  = `${typeof window !== "undefined" ? window.location.origin : ""}/?${kind}=${encodeURIComponent(currentContact.slug)}`;
+          return (
+            <div className="mt-4 pt-4 border-t border-gray-100">
+              <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 mb-2 flex items-center gap-1">
+                <LinkIcon size={10} />Link pra apoiador se cadastrar
+              </p>
+              <div className="flex items-center gap-2 bg-brand-50 border border-brand-100 rounded-xl px-3 py-2.5">
+                <input readOnly value={url}
+                  className="flex-1 bg-transparent text-xs text-gray-700 outline-none truncate select-all" />
+                <button type="button" onClick={() => { navigator.clipboard.writeText(url); toast.success("Link copiado"); }}
+                  className="text-xs font-semibold text-white bg-brand-600 active:bg-brand-700 rounded-lg px-3 py-2 flex items-center gap-1 shrink-0">
+                  <Copy size={12} /> Copiar
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 mt-1.5 leading-relaxed">
+                Envie esse link pra novos apoiadores. Eles preenchem o formulário e entram automaticamente na rede de <strong>{currentContact.name}</strong>.
+              </p>
+            </div>
+          );
+        })()}
       </section>
 
       {/* Busca + título da seção */}
@@ -214,7 +246,7 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
         <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
       ) : children.length === 0 ? (
         <EmptyState
-          targetLevel={targetChildLevel}
+          availableLevels={availableLevels}
           canCreate={canCreateHere}
           onCreate={() => setShowCreate(true)} />
       ) : (
@@ -240,7 +272,7 @@ export function MemberDashboard({ session }: { session: MemberSession }) {
         <CreateBelow
           parentId={currentId}
           parentName={currentContact.name}
-          targetLevel={targetChildLevel}
+          availableLevels={availableLevels}
           onClose={() => setShowCreate(false)}
           onSaved={() => { setShowCreate(false); load(); }} />
       )}
@@ -306,41 +338,49 @@ function ChildRow({ contact, onOpen, onEdit, onDelete }: {
   );
 }
 
-function EmptyState({ targetLevel, canCreate, onCreate }: {
-  targetLevel: number;
+function EmptyState({ availableLevels, canCreate, onCreate }: {
+  availableLevels: number[];
   canCreate: boolean;
   onCreate: () => void;
 }) {
-  const target = LEVEL_LABEL_SG[targetLevel] ?? "pessoa";
+  const labels = availableLevels.map(lv => LEVEL_LABEL_SG[lv]?.toLowerCase() ?? "pessoa");
+  const desc = labels.length === 0 ? "pessoa"
+    : labels.length === 1 ? labels[0]
+    : labels.slice(0, -1).join(", ") + " ou " + labels[labels.length - 1];
+
   return (
     <div className="bg-white rounded-2xl border border-dashed border-gray-300 px-6 py-12 text-center">
       <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
         <Users size={26} className="text-gray-400" />
       </div>
-      <p className="font-semibold text-gray-700">Nenhum {target.toLowerCase()} ainda</p>
+      <p className="font-semibold text-gray-700">Rede vazia</p>
       <p className="text-xs text-gray-500 mt-1 mb-5">
         {canCreate
-          ? `Toque abaixo pra adicionar o primeiro ${target.toLowerCase()}.`
+          ? `Adicione ${desc} abaixo.`
           : `Você não tem permissão pra adicionar nesse nível.`}
       </p>
       {canCreate && (
         <button onClick={onCreate}
           className="inline-flex items-center gap-1.5 bg-brand-600 active:bg-brand-700 text-white font-semibold rounded-xl px-4 py-2.5 text-sm">
-          <Plus size={14} /> Adicionar {target}
+          <Plus size={14} /> Adicionar
         </button>
       )}
     </div>
   );
 }
 
-function CreateBelow({ parentId, parentName, targetLevel, onClose, onSaved }: {
+function CreateBelow({ parentId, parentName, availableLevels, onClose, onSaved }: {
   parentId: string;
   parentName: string;
-  targetLevel: number;
+  availableLevels: number[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [form, setForm] = useState<PersonFormState>(initialPersonForm);
+  // Default: o cargo MAIS BAIXO disponível (apoiador se possível — caso comum)
+  const [selectedLevel, setSelectedLevel] = useState<number>(
+    availableLevels.length > 0 ? availableLevels[availableLevels.length - 1] : 3
+  );
   const [busy, setBusy] = useState(false);
   const [createdLogin, setCreatedLogin] = useState<{ username: string; password: string | null; name: string } | null>(null);
 
@@ -351,8 +391,8 @@ function CreateBelow({ parentId, parentName, targetLevel, onClose, onSaved }: {
     try {
       let endpoint = "/api/apoiadores";
       const payload: any = personFormToPayload(form);
-      if (targetLevel <= 1) endpoint = "/api/coordinators";
-      else if (targetLevel === 2) {
+      if (selectedLevel <= 1) endpoint = "/api/coordinators";
+      else if (selectedLevel === 2) {
         endpoint = "/api/leaders";
         payload.coordinator = parentName;
       } else {
@@ -376,8 +416,6 @@ function CreateBelow({ parentId, parentName, targetLevel, onClose, onSaved }: {
       }
     } finally { setBusy(false); }
   }
-
-  const targetLabel = LEVEL_LABEL_SG[targetLevel] ?? "Pessoa";
 
   if (createdLogin) {
     return (
@@ -411,18 +449,38 @@ function CreateBelow({ parentId, parentName, targetLevel, onClose, onSaved }: {
   }
 
   return (
-    <BottomSheet open onClose={onClose} title={`Adicionar ${targetLabel}`}>
+    <BottomSheet open onClose={onClose} title="Adicionar à rede">
       <form onSubmit={submit} className="flex flex-col gap-4">
         <p className="text-xs text-gray-500 -mt-2">
           Abaixo de <span className="font-semibold text-gray-700">{parentName}</span>
         </p>
+
+        {availableLevels.length > 1 && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Cargo *</label>
+            <div className="grid grid-cols-2 gap-2">
+              {availableLevels.map(lv => (
+                <button key={lv} type="button" onClick={() => setSelectedLevel(lv)}
+                  className={`py-2.5 px-3 text-sm font-semibold rounded-xl border transition-colors ${
+                    selectedLevel === lv
+                      ? "border-brand-300 bg-brand-50 text-brand-700"
+                      : "border-gray-200 text-gray-600 active:bg-gray-50"
+                  }`}>
+                  {LEVEL_LABEL_SG[lv]}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <PersonFormFields form={form} setForm={setForm} />
+
         <div className="flex gap-2 pt-3 border-t border-gray-100 sticky bottom-0 bg-white -mx-5 px-5 py-3">
           <button type="button" onClick={onClose}
             className="flex-1 py-3 text-base text-gray-600 border border-gray-200 rounded-xl active:bg-gray-50">Cancelar</button>
           <button disabled={busy}
             className="flex-1 py-3 text-base font-semibold text-white bg-brand-600 active:bg-brand-700 rounded-xl disabled:opacity-60">
-            {busy ? "Salvando..." : "Adicionar"}
+            {busy ? "Salvando..." : `Adicionar ${LEVEL_LABEL_SG[selectedLevel] ?? ""}`}
           </button>
         </div>
       </form>
