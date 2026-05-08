@@ -7,12 +7,10 @@ const PUBLIC_PATHS = [
   "/admin/login",
   "/api/auth/admin/login",
   "/api/auth/login",
-  "/api/auth/login-by-name",
   "/api/auth/logout",
   "/api/auth/me",
   "/api/submit",
   "/api/leaders/by-name",
-  "/api/coordinators-public",
 ];
 
 function isPublic(path: string): boolean {

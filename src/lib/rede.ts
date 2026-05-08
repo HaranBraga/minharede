@@ -50,3 +50,67 @@ export function placeholderPhone(): string {
  * Busca/cria slug único. Reutiliza o helper existente.
  */
 export { uniqueSlug };
+
+import { slugify } from "@/lib/slug";
+
+/**
+ * Gera username único pra RedeUser baseado no nome. Adiciona sufixo numérico
+ * em caso de colisão. Usado quando criamos coord/líder via dashboard e
+ * geramos login automático.
+ */
+export async function uniqueUsername(name: string): Promise<string> {
+  const base = slugify(name).replace(/[^a-z0-9]+/g, "") || "user";
+  let candidate = base;
+  let n = 1;
+  while (await prisma.redeUser.findUnique({ where: { username: candidate } })) {
+    n += 1;
+    candidate = `${base}${n}`;
+    if (n > 999) return `${base}-${Date.now()}`;
+  }
+  return candidate;
+}
+
+/** Default password (bcrypt-hashable). User troca depois nas configs. */
+export const DEFAULT_USER_PASSWORD = "123456";
+
+/** Normaliza um telefone pra o formato 55+DDD+número. Retorna null se inválido. */
+export function normalizePhone(input: string): string | null {
+  const d = String(input ?? "").replace(/\D/g, "");
+  if (d.length < 10) return null;
+  return d.startsWith("55") ? d : `55${d}`;
+}
+
+/**
+ * Constrói o payload de campos pessoais do Contact a partir do body.
+ * Aceita: email, dataNascimento (ISO ou DD/MM/AAAA), genero, rua, bairro,
+ * cidade, zona.
+ */
+export function buildPersonalFields(body: any): {
+  email: string | null;
+  dataNascimento: Date | null;
+  genero: string | null;
+  rua: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  zona: string | null;
+} {
+  let nascimento: Date | null = null;
+  if (body.dataNascimento) {
+    const s = String(body.dataNascimento).trim();
+    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (m) nascimento = new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00Z`);
+    else {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) nascimento = d;
+    }
+  }
+  return {
+    email:          body.email?.trim() || null,
+    dataNascimento: nascimento,
+    genero:         body.genero?.trim() || null,
+    rua:            body.rua?.trim() || null,
+    bairro:         body.bairro?.trim() || null,
+    cidade:         body.cidade?.trim() || null,
+    zona:           body.zona?.trim() || null,
+  };
+}

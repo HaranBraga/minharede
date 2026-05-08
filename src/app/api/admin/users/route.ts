@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { uniqueSlug, placeholderPhone, getCoordRoleId, getLiderRoleId } from "@/lib/rede";
+import { uniqueSlug, getCoordRoleId, getLiderRoleId, buildPersonalFields, normalizePhone } from "@/lib/rede";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -106,6 +106,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Cargo inválido (apenas Coord Grupo, Coord ou Líder podem ter login)" }, { status: 400 });
   }
 
+  const phoneClean = normalizePhone(phone);
+  if (!phoneClean) return NextResponse.json({ error: "Telefone obrigatório (10 ou 11 dígitos)" }, { status: 400 });
+  const phoneTaken = await prisma.contact.findUnique({ where: { phone: phoneClean } });
+  if (phoneTaken) return NextResponse.json({ error: `Telefone já cadastrado: ${phoneTaken.name}` }, { status: 409 });
+
   const role = await prisma.personRole.findFirst({
     where: {
       OR: [
@@ -134,18 +139,8 @@ export async function POST(req: NextRequest) {
     resolvedParentId = p?.id ?? null;
   }
 
-  // Phone
-  let phoneClean: string;
-  if (phone?.trim()) {
-    const d = String(phone).replace(/\D/g, "");
-    phoneClean = d.startsWith("55") ? d : `55${d}`;
-    const existing = await prisma.contact.findUnique({ where: { phone: phoneClean } });
-    if (existing) return NextResponse.json({ error: `Telefone já cadastrado: ${existing.name}` }, { status: 409 });
-  } else {
-    phoneClean = placeholderPhone();
-  }
-
   const slug = await uniqueSlug(String(name).trim());
+  const personal = buildPersonalFields(body);
 
   const result = await prisma.$transaction(async (tx) => {
     const contact = await tx.contact.create({
@@ -156,6 +151,7 @@ export async function POST(req: NextRequest) {
         roleId: role.id,
         parentId: resolvedParentId,
         source: "rede",
+        ...personal,
       },
     });
     const ru = await tx.redeUser.create({

@@ -10,6 +10,7 @@ import {
 import toast from "react-hot-toast";
 import { AdminNetworkView } from "@/components/AdminNetworkView";
 import { BottomSheet } from "@/components/BottomSheet";
+import { PersonFormFields, personFormToPayload, initialPersonForm, type PersonFormState } from "@/components/PersonFormFields";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -215,12 +216,12 @@ function UserForm({ initial, onClose, onSaved }: {
   const [showPwd, setShowPwd]   = useState(false);
   const [active, setActive]     = useState(initial?.active ?? true);
 
-  const [name, setName]         = useState("");
-  const [phone, setPhone]       = useState("");
-  const [roleLevel, setRoleLevel] = useState<number>(2); // default Líder
-  const [parents, setParents]   = useState<ParentContact[]>([]);
-  const [parentId, setParentId] = useState<string>("");
-  const [busy, setBusy] = useState(false);
+  const [personForm, setPersonForm] = useState<PersonFormState>(initialPersonForm);
+  const [roleLevel, setRoleLevel]   = useState<number>(2); // default Líder
+  const [parents, setParents]       = useState<ParentContact[]>([]);
+  const [parentId, setParentId]     = useState<string>("");
+  const [busy, setBusy]             = useState(false);
+  const [createdLogin, setCreatedLogin] = useState<{ username: string; password: string | null; name: string } | null>(null);
 
   // Carrega parents elegíveis ao mudar role
   useEffect(() => {
@@ -244,14 +245,23 @@ function UserForm({ initial, onClose, onSaved }: {
         toast.success("Atualizado");
         onSaved();
       } else {
-        const body: any = { name, username, password, roleLevel, phone, parentId: parentId || undefined };
+        const body: any = {
+          ...personFormToPayload(personForm),
+          username, password, roleLevel,
+          parentId: parentId || undefined,
+        };
         const r = await fetch("/api/admin/users", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         if (!r.ok) { const d = await r.json(); toast.error(d.error || "Erro"); return; }
         toast.success("Login criado");
-        onSaved();
+        const showPassword = !password;
+        setCreatedLogin({
+          username: username.toLowerCase().trim(),
+          password: showPassword ? "123456" : null,
+          name: personForm.name,
+        });
       }
     } finally { setBusy(false); }
   }
@@ -259,36 +269,59 @@ function UserForm({ initial, onClose, onSaved }: {
   const inp = "w-full px-4 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-brand-600";
   const lbl = "block text-xs font-medium text-gray-600 mb-1.5";
 
+  if (createdLogin) {
+    return (
+      <BottomSheet open onClose={onSaved} title="Login criado!">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            <span className="font-semibold text-gray-900">{createdLogin.name}</span> foi criado com login.
+          </p>
+          <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 space-y-2">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500">Usuário</p>
+              <p className="font-mono text-base text-gray-900 mt-0.5">{createdLogin.username}</p>
+            </div>
+            {createdLogin.password && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500">Senha padrão</p>
+                <p className="font-mono text-base text-gray-900 mt-0.5">{createdLogin.password}</p>
+              </div>
+            )}
+          </div>
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+            ⚠ Anote ou tire um print. A senha pode ser trocada no primeiro acesso.
+          </p>
+          <button onClick={onSaved}
+            className="w-full py-3 text-base font-semibold text-white bg-brand-600 active:bg-brand-700 rounded-xl">
+            OK, fechar
+          </button>
+        </div>
+      </BottomSheet>
+    );
+  }
+
   return (
     <BottomSheet open onClose={onClose} title={isEdit ? "Editar Login" : "Novo Login"}>
       <form onSubmit={submit} className="flex flex-col gap-4">
         {!isEdit && (
           <>
             <section className="space-y-3">
-              <h3 className="text-[11px] uppercase tracking-wide font-bold text-gray-400">Pessoa</h3>
-              <div>
-                <label className={lbl}>Nome *</label>
-                <input required value={name} onChange={e => setName(e.target.value)}
-                  placeholder="Nome completo" className={inp} />
-              </div>
-              <div>
-                <label className={lbl}>Cargo *</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { lv: 0, label: "Coord. Grupo" },
-                    { lv: 1, label: "Coordenador" },
-                    { lv: 2, label: "Líder" },
-                  ].map(r => (
-                    <button key={r.lv} type="button" onClick={() => setRoleLevel(r.lv)}
-                      className={`py-2.5 px-2 text-xs font-semibold rounded-xl border ${
-                        roleLevel === r.lv
-                          ? "border-brand-300 bg-brand-50 text-brand-700"
-                          : "border-gray-200 text-gray-600 active:bg-gray-50"
-                      }`}>
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
+              <h3 className="text-[11px] uppercase tracking-wide font-bold text-gray-400">Cargo</h3>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { lv: 0, label: "Coord. Grupo" },
+                  { lv: 1, label: "Coordenador" },
+                  { lv: 2, label: "Líder" },
+                ].map(r => (
+                  <button key={r.lv} type="button" onClick={() => setRoleLevel(r.lv)}
+                    className={`py-2.5 px-2 text-xs font-semibold rounded-xl border ${
+                      roleLevel === r.lv
+                        ? "border-brand-300 bg-brand-50 text-brand-700"
+                        : "border-gray-200 text-gray-600 active:bg-gray-50"
+                    }`}>
+                    {r.label}
+                  </button>
+                ))}
               </div>
               {roleLevel > 0 && parents.length > 0 && (
                 <div>
@@ -304,15 +337,16 @@ function UserForm({ initial, onClose, onSaved }: {
                   </select>
                 </div>
               )}
-              <div>
-                <label className={lbl}>Telefone (opcional, 11 dígitos)</label>
-                <input type="tel" inputMode="numeric" maxLength={11}
-                  value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                  placeholder="68999551835" className={inp} />
-              </div>
             </section>
 
-            <div className="border-t border-gray-100" />
+            <div className="border-t border-gray-100 -mx-5" />
+
+            <section className="space-y-3">
+              <h3 className="text-[11px] uppercase tracking-wide font-bold text-gray-400">Pessoa</h3>
+              <PersonFormFields form={personForm} setForm={setPersonForm} autoFocus={false} />
+            </section>
+
+            <div className="border-t border-gray-100 -mx-5" />
           </>
         )}
 

@@ -12,11 +12,16 @@ export default function Page() {
 }
 
 /**
- * Landing pública. Reproduz a dinâmica dos links do formelider:
- *   - ?coord=NOME      → AUTO-LOGIN do coord (mesma URL antiga)
- *   - ?coord_form=NOME → formulário do apoiador, vinculado direto ao coord
- *   - ?lider=NOME      → formulário do apoiador, vinculado ao líder
- *   - sem param        → redireciona pro login (ou painel se logado)
+ * Landing pública.
+ *
+ * URLs públicas (formulário do apoiador):
+ *   - /?lider=NOME       → formulário vinculado ao líder
+ *   - /?coord_form=NOME  → formulário vinculado ao coord
+ *
+ * URL de coord/líder NÃO É MAIS auto-login pelo nome (segurança):
+ *   - /?coord=NOME       → redireciona pro /login (precisa user+senha)
+ *
+ * Sem param: redireciona pro login (ou painel se logado).
  */
 function Home() {
   const router = useRouter();
@@ -30,21 +35,9 @@ function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // ?coord=X → auto-login (igual formelider antigo)
+    // ?coord=X → SEM auto-login. Manda pro /login (segurança).
     if (coord && !lider && !coordForm) {
-      fetch("/api/auth/login-by-name", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: coord }),
-      }).then(async r => {
-        if (r.ok) {
-          // Limpa ?coord= da URL antes de ir pro dashboard
-          window.history.replaceState({}, "", window.location.pathname);
-          router.replace("/dashboard");
-        } else {
-          // Se não achou, manda pro login com nome pré-preenchido
-          router.replace(`/login?suggest=${encodeURIComponent(coord)}`);
-        }
-      }).catch(() => router.replace("/login"));
+      router.replace("/login");
       return;
     }
 
@@ -58,7 +51,7 @@ function Home() {
       return;
     }
 
-    // ?lider= → busca coord do líder pra preencher hidden no form
+    // ?lider=X → busca coord do líder pra preencher hidden
     if (lider) {
       fetch(`/api/leaders/by-name/${encodeURIComponent(lider)}`)
         .then(r => r.ok ? r.json() : null)
@@ -71,7 +64,7 @@ function Home() {
       return;
     }
 
-    // ?coord_form= → form com coord pré-vinculado (sem buscar no banco)
+    // ?coord_form=X → form com coord pré-vinculado
     if (coordForm) {
       setTarget({ id: "", name: coordForm, coordinator: coordForm });
       setLoading(false);
@@ -94,11 +87,9 @@ function Home() {
     );
   }
   if (target) {
-    return <ApoiadorForm
-      target={target}
+    return <ApoiadorForm target={target}
       liderSlug={lider ?? undefined}
-      coordSlug={coordForm ?? undefined}
-    />;
+      coordSlug={coordForm ?? undefined} />;
   }
   return null;
 }

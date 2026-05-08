@@ -88,8 +88,6 @@ export function ContactEditForm({ contactId, onClose, onSaved }: {
     );
   }
 
-  const isCoord  = contact.role && contact.role.level <= 1;
-  const isLider  = contact.role && contact.role.level === 2;
   const isApoiad = contact.role && contact.role.level >= 3;
 
   return (
@@ -187,12 +185,6 @@ export function ContactEditForm({ contactId, onClose, onSaved }: {
             </div>
           </div>
         </section>
-
-        {(isCoord || isLider) && (
-          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed">
-            ⚠ Mudar o nome altera o link público. Os links anteriores deixarão de funcionar.
-          </p>
-        )}
 
         <div className="flex gap-2 pt-3 border-t border-gray-100 sticky bottom-0 bg-white -mx-5 px-5 py-3">
           <button type="button" onClick={onClose}

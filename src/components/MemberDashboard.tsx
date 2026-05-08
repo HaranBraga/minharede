@@ -6,6 +6,7 @@ import {
 import toast from "react-hot-toast";
 import { BottomSheet } from "./BottomSheet";
 import { ContactEditForm } from "./ContactEditForm";
+import { PersonFormFields, personFormToPayload, initialPersonForm, type PersonFormState } from "./PersonFormFields";
 
 interface Role { id: string; key: string; label: string; color: string; bgColor: string; level: number; }
 interface Contact {
@@ -339,38 +340,75 @@ function CreateBelow({ parentId, parentName, targetLevel, onClose, onSaved }: {
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [form, setForm] = useState<PersonFormState>(initialPersonForm);
   const [busy, setBusy] = useState(false);
+  const [createdLogin, setCreatedLogin] = useState<{ username: string; password: string | null; name: string } | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!form.name.trim() || form.phone.length < 10) return;
     setBusy(true);
     try {
       let endpoint = "/api/apoiadores";
-      let body: any = { name, phone, parentId };
-      if (targetLevel <= 1) {
-        endpoint = "/api/coordinators";
-        body = { name };
-      } else if (targetLevel === 2) {
+      const payload: any = personFormToPayload(form);
+      if (targetLevel <= 1) endpoint = "/api/coordinators";
+      else if (targetLevel === 2) {
         endpoint = "/api/leaders";
-        body = { name, coordinator: parentName };
+        payload.coordinator = parentName;
+      } else {
+        payload.parentId = parentId;
       }
       const r = await fetch(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       });
       if (!r.ok) { const d = await r.json(); toast.error(d.error || "Erro"); return; }
+      const data = await r.json();
       toast.success("Adicionado");
-      onSaved();
+      if (data.login?.username) {
+        setCreatedLogin({
+          username: data.login.username,
+          password: data.login.defaultPassword,
+          name: form.name,
+        });
+      } else {
+        onSaved();
+      }
     } finally { setBusy(false); }
   }
 
-  const inp = "w-full px-4 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-brand-600";
-  const lbl = "block text-xs font-medium text-gray-600 mb-1.5";
-  const isApoiad = targetLevel === 3;
   const targetLabel = LEVEL_LABEL_SG[targetLevel] ?? "Pessoa";
+
+  if (createdLogin) {
+    return (
+      <BottomSheet open onClose={onSaved} title="Login criado!">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            <span className="font-semibold text-gray-900">{createdLogin.name}</span> foi adicionado(a) à sua rede com login automático.
+          </p>
+          <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 space-y-2">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500">Usuário</p>
+              <p className="font-mono text-base text-gray-900 mt-0.5">{createdLogin.username}</p>
+            </div>
+            {createdLogin.password && (
+              <div>
+                <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500">Senha padrão</p>
+                <p className="font-mono text-base text-gray-900 mt-0.5">{createdLogin.password}</p>
+              </div>
+            )}
+          </div>
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+            ⚠ Anote ou tire um print. A senha pode ser trocada no primeiro acesso.
+          </p>
+          <button onClick={onSaved}
+            className="w-full py-3 text-base font-semibold text-white bg-brand-600 active:bg-brand-700 rounded-xl">
+            OK, fechar
+          </button>
+        </div>
+      </BottomSheet>
+    );
+  }
 
   return (
     <BottomSheet open onClose={onClose} title={`Adicionar ${targetLabel}`}>
@@ -378,19 +416,8 @@ function CreateBelow({ parentId, parentName, targetLevel, onClose, onSaved }: {
         <p className="text-xs text-gray-500 -mt-2">
           Abaixo de <span className="font-semibold text-gray-700">{parentName}</span>
         </p>
-        <div>
-          <label className={lbl}>Nome *</label>
-          <input required autoFocus value={name} onChange={e => setName(e.target.value)} className={inp} />
-        </div>
-        {isApoiad && (
-          <div>
-            <label className={lbl}>Telefone (11 dígitos) <span className="text-gray-400">opcional</span></label>
-            <input type="tel" inputMode="numeric" maxLength={11}
-              value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, "").slice(0, 11))}
-              placeholder="68999551835" className={inp} />
-          </div>
-        )}
-        <div className="flex gap-2 pt-2">
+        <PersonFormFields form={form} setForm={setForm} />
+        <div className="flex gap-2 pt-3 border-t border-gray-100 sticky bottom-0 bg-white -mx-5 px-5 py-3">
           <button type="button" onClick={onClose}
             className="flex-1 py-3 text-base text-gray-600 border border-gray-200 rounded-xl active:bg-gray-50">Cancelar</button>
           <button disabled={busy}
