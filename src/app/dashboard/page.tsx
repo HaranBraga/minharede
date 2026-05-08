@@ -2,9 +2,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { LogOut, Network } from "lucide-react";
+import { LogOut, Network, Settings } from "lucide-react";
 import toast from "react-hot-toast";
 import { MemberDashboard } from "@/components/MemberDashboard";
+import { ChangePasswordSheet } from "@/components/ChangePasswordSheet";
 
 interface MemberSession {
   type: "member";
@@ -16,6 +17,7 @@ interface MemberSession {
 export default function DashboardPage() {
   const router = useRouter();
   const [session, setSession] = useState<MemberSession | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
@@ -36,7 +38,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-2">
           <Link href="/dashboard" className="w-9 h-9 bg-brand-600 rounded-xl flex items-center justify-center text-white shrink-0">
             <Network size={16} />
           </Link>
@@ -44,6 +46,11 @@ export default function DashboardPage() {
             <p className="font-bold text-gray-900 text-sm">Minha Rede</p>
             <p className="text-[11px] text-gray-500 truncate">{session.roleLabel}</p>
           </div>
+          <button onClick={() => setShowSettings(true)}
+            className="p-2 text-gray-600 border border-gray-200 rounded-lg active:bg-gray-50"
+            title="Trocar senha">
+            <Settings size={14} />
+          </button>
           <button onClick={logout}
             className="text-xs font-medium text-gray-600 border border-gray-200 px-2.5 py-2 rounded-lg flex items-center gap-1.5 active:bg-gray-50">
             <LogOut size={12} /> Sair
@@ -54,6 +61,8 @@ export default function DashboardPage() {
       <main className="max-w-3xl mx-auto px-4 py-4">
         <MemberDashboard session={session} />
       </main>
+
+      {showSettings && <ChangePasswordSheet onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

@@ -61,16 +61,18 @@ export async function POST(req: NextRequest) {
   if (err) return err;
 
   const body = await req.json().catch(() => ({}));
-  const { username, password } = body;
+  const { username } = body;
 
-  if (!username?.trim() || !password) {
-    return NextResponse.json({ error: "Usuário e senha são obrigatórios" }, { status: 400 });
+  if (!username?.trim()) {
+    return NextResponse.json({ error: "Usuário é obrigatório" }, { status: 400 });
   }
   const uname = String(username).toLowerCase().trim();
   if (!USERNAME_RE.test(uname)) {
     return NextResponse.json({ error: "Usuário inválido (3-32 chars: a-z 0-9 . _ -)" }, { status: 400 });
   }
-  if (String(password).length < 6) {
+  // Senha padrão = 123456 (admin pode definir outra; user troca depois)
+  const password = body.password?.trim() ? String(body.password) : "123456";
+  if (password.length < 6) {
     return NextResponse.json({ error: "Senha mínima 6 caracteres" }, { status: 400 });
   }
   if (await prisma.redeUser.findUnique({ where: { username: uname } })) {

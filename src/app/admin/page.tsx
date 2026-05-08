@@ -4,8 +4,8 @@ import { useRouter } from "next/navigation";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  ShieldCheck, LogOut, Network, KeyRound, Upload, Download,
-  Search, Plus, Edit2, Trash2, Eye, EyeOff, X, Power, ChevronRight,
+  ShieldCheck, LogOut, Network, KeyRound,
+  Search, Plus, Edit2, Trash2, Eye, EyeOff, Power, ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { AdminNetworkView } from "@/components/AdminNetworkView";
@@ -13,7 +13,7 @@ import { BottomSheet } from "@/components/BottomSheet";
 
 export default function AdminPage() {
   const router = useRouter();
-  const [tab, setTab] = useState<"rede" | "users" | "import">("rede");
+  const [tab, setTab] = useState<"rede" | "users">("rede");
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -39,16 +39,14 @@ export default function AdminPage() {
         </div>
 
         <div className="max-w-3xl mx-auto px-2 flex">
-          <TabButton active={tab === "rede"}   onClick={() => setTab("rede")}   icon={Network}  label="Rede" />
-          <TabButton active={tab === "users"}  onClick={() => setTab("users")}  icon={KeyRound} label="Logins" />
-          <TabButton active={tab === "import"} onClick={() => setTab("import")} icon={Upload}   label="Importar" />
+          <TabButton active={tab === "rede"}  onClick={() => setTab("rede")}  icon={Network}  label="Rede" />
+          <TabButton active={tab === "users"} onClick={() => setTab("users")} icon={KeyRound} label="Logins" />
         </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-4">
-        {tab === "rede"   && <AdminNetworkView />}
-        {tab === "users"  && <UsersTab />}
-        {tab === "import" && <ImportTab />}
+        {tab === "rede"  && <AdminNetworkView />}
+        {tab === "users" && <UsersTab />}
       </main>
     </div>
   );
@@ -328,16 +326,25 @@ function UserForm({ initial, onClose, onSaved }: {
               className={inp} />
           </div>
           <div>
-            <label className={lbl}>{isEdit ? "Nova senha (vazio = manter)" : "Senha *"}</label>
+            <label className={lbl}>
+              {isEdit
+                ? "Nova senha (vazio = manter)"
+                : <>Senha <span className="text-gray-400 font-normal">(opcional — default: 123456)</span></>}
+            </label>
             <div className="relative">
-              <input required={!isEdit} type={showPwd ? "text" : "password"}
+              <input type={showPwd ? "text" : "password"}
                 value={password} onChange={e => setPassword(e.target.value)}
-                placeholder="Mínimo 6 caracteres" className={inp + " pr-11"} />
+                placeholder={isEdit ? "Mínimo 6 caracteres" : "123456"} className={inp + " pr-11"} />
               <button type="button" onClick={() => setShowPwd(s => !s)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400">
                 {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
+            {!isEdit && (
+              <p className="text-[11px] text-gray-500 mt-1">
+                Se vazio, a senha vira <strong>123456</strong>. O usuário pode trocar depois nas configurações.
+              </p>
+            )}
           </div>
           {isEdit && (
             <label className="flex items-center gap-2 text-sm cursor-pointer mt-1">
@@ -410,66 +417,3 @@ function ChangePwd({ user, onClose }: { user: RedeUserRow; onClose: () => void }
   );
 }
 
-// ── Tab: Importar/Exportar (mantida) ──────────────────────────────────────────
-function ImportTab() {
-  const [csvText, setCsv] = useState("");
-  const [busy, setBusy]   = useState(false);
-  const [report, setReport] = useState<any>(null);
-
-  async function handleFile(file: File) {
-    const text = await file.text();
-    setCsv(text);
-  }
-  async function importNow() {
-    if (!csvText.trim()) { toast.error("Cole o CSV ou suba um arquivo"); return; }
-    setBusy(true); setReport(null);
-    try {
-      const r = await fetch("/api/leaders/import", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv: csvText }),
-      });
-      const d = await r.json();
-      if (!r.ok) { toast.error(d.error || "Falha"); return; }
-      setReport(d);
-      toast.success(d.message || "Importado");
-    } finally { setBusy(false); }
-  }
-
-  return (
-    <div className="space-y-3">
-      <a href="/api/leaders/export" target="_blank" rel="noreferrer"
-        className="flex items-center justify-center gap-2 py-3 text-sm font-medium text-white bg-gray-800 active:bg-gray-700 rounded-2xl">
-        <Download size={15} /> Exportar CSV
-      </a>
-
-      <div className="bg-white rounded-2xl border border-gray-200 p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <Upload size={15} className="text-brand-600" />
-          <h2 className="font-semibold text-gray-900 text-sm">Importar CSV</h2>
-        </div>
-        <p className="text-xs text-gray-500 leading-relaxed">
-          Formato: cabeçalho <code className="bg-gray-100 px-1 rounded">Nome,Link,Coordenador</code>, depois
-          seção <code className="bg-gray-100 px-1 rounded">#COORDENADORES</code> com <code className="bg-gray-100 px-1 rounded">Nome,Link</code>.
-        </p>
-        <label className="block">
-          <span className="text-xs text-gray-600">Arquivo CSV</span>
-          <input type="file" accept=".csv,text/csv"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-            className="block mt-1.5 text-xs w-full" />
-        </label>
-        <textarea value={csvText} onChange={e => setCsv(e.target.value)}
-          placeholder="Ou cole o CSV aqui..." rows={6}
-          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-brand-600" />
-        <button onClick={importNow} disabled={busy}
-          className="w-full py-3 text-sm font-semibold text-white bg-brand-600 active:bg-brand-700 rounded-xl disabled:opacity-60">
-          {busy ? "Importando..." : "Importar"}
-        </button>
-        {report && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs text-emerald-800">
-            {report.message}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
