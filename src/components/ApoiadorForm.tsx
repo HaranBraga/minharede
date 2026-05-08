@@ -247,17 +247,40 @@ export function ApoiadorForm({ target, liderSlug, coordSlug }: Props) {
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center md:p-4">
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowLgpd(false)} />
           <div className="relative bg-white w-full md:max-w-lg md:rounded-2xl rounded-t-2xl shadow-xl max-h-[85vh] overflow-y-auto sheet-anim">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-gray-900">Política de Privacidade</h3>
+            <div className="px-5 py-4 border-b border-gray-100 sticky top-0 bg-white">
+              <h3 className="text-lg font-bold text-gray-900">Política de Privacidade e Proteção de Dados (LGPD)</h3>
             </div>
-            <div className="px-5 py-4 text-sm text-gray-600 space-y-3">
-              <p><strong>1. Coleta de Dados:</strong> Coletamos apenas os dados solicitados no formulário.</p>
-              <p><strong>2. Finalidade:</strong> Identificar você e permitir contato com conteúdos relevantes.</p>
-              <p><strong>3. Sem Spam:</strong> Não vendemos nem repassamos seus dados a terceiros.</p>
-              <p><strong>4. Cancelamento:</strong> Você pode pedir a parada das comunicações a qualquer momento.</p>
-              <p><strong>5. Seus Direitos (LGPD):</strong> Você pode alterar, acessar ou excluir seus dados (Lei nº 13.709/2018).</p>
+            <div className="px-5 py-5 text-sm text-gray-700 space-y-4 leading-relaxed">
+              <div>
+                <p className="font-bold text-gray-900 mb-1">1. Coleta e Finalidade</p>
+                <p>Os dados coletados (Nome, Data de Nascimento, WhatsApp, Gênero e Endereço) são utilizados exclusivamente para identificação do apoiador, análise demográfica da nossa rede e estabelecimento de comunicação direta para envio de informações, convites e conteúdos sobre nossas ações.</p>
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 mb-1">2. Tratamento e Segurança</p>
+                <p>Adotamos medidas de segurança técnicas e administrativas para proteger seus dados pessoais de acessos não autorizados ou situações acidentais de perda ou alteração. O acesso às informações é restrito apenas aos gestores da rede de apoiadores.</p>
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 mb-1">3. Compartilhamento e Sigilo</p>
+                <p>Seus dados são confidenciais. Não compartilhamos, vendemos ou repassamos suas informações a terceiros para fins comerciais. O uso é estritamente interno para a gestão da nossa rede de apoio.</p>
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 mb-1">4. Seus Direitos (Lei 13.709/2018)</p>
+                <p>Como titular dos dados, você tem o direito de, a qualquer momento:</p>
+                <ul className="list-disc pl-5 mt-1 space-y-0.5 text-gray-600">
+                  <li>Confirmar a existência do tratamento e acessar seus dados;</li>
+                  <li>Solicitar a correção de dados incompletos ou desatualizados;</li>
+                  <li>Revogar seu consentimento e solicitar a exclusão definitiva de seus dados da nossa base, cessando qualquer comunicação imediata.</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 mb-1">5. Consentimento</p>
+                <p>Ao preencher este formulário, você declara estar ciente e autoriza o tratamento dos seus dados para as finalidades acima descritas, nos termos da LGPD.</p>
+              </div>
+              <p className="text-[11px] text-gray-400 italic pt-2 border-t border-gray-100">
+                Para fins de comprovação legal, registramos a data, hora e endereço de IP do seu consentimento.
+              </p>
             </div>
-            <div className="px-5 py-4 border-t border-gray-100 bg-gray-50">
+            <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 sticky bottom-0">
               <button onClick={() => { setShowLgpd(false); setField("lgpd", true); }}
                 className="w-full py-3 bg-brand-600 active:bg-brand-700 text-white rounded-xl text-sm font-semibold">
                 Estou de acordo

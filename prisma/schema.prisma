@@ -49,6 +49,9 @@ model Contact {
   // Slug público usado no minha-rede (link.azecode.cloud) pra montar URLs
   // tipo /?lider=mario, /?coord=joao. Gerado a partir do nome.
   publicSlug      String?    @unique
+  // Consentimento LGPD do apoiador no formulário público (data + IP)
+  lgpdConsentAt   DateTime?
+  lgpdIpAddress   String?
   roleId          String
   role            PersonRole @relation(fields: [roleId], references: [id])
   parentId        String?
@@ -98,6 +101,7 @@ model Contact {
   contactNotes    ContactNote[]
   birthdayMessages BirthdayMessage[]
   redeLoginLogs   RedeLoginLog[]
+  redeUser        RedeUser?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -218,6 +222,23 @@ model User {
 
   contactNotes ContactNote[]
   auditLogs    AuditLog[]
+
+  @@index([username])
+}
+
+// Login (username + senha) do minha-rede. SEPARADO da tabela User do CRM
+// (regra do projeto: usuários do minha-rede não se misturam com os do
+// conect-crm/painel-360). Sempre vinculado a um Contact.
+model RedeUser {
+  id        String   @id @default(cuid())
+  contactId String   @unique
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  username  String   @unique
+  password  String   // bcrypt
+  active    Boolean  @default(true)
+  lastLogin DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([username])
 }

@@ -31,12 +31,19 @@ export async function POST(req: NextRequest) {
   const {
     nome, telefone, data_nascimento, genero,
     rua, bairro, cidade, zona,
-    nome_lider, nome_coordenador,
+    nome_lider, nome_coordenador, lgpd,
   } = body ?? {};
 
   if (!nome?.trim()) {
     return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
   }
+  if (!lgpd) {
+    return NextResponse.json({ error: "É necessário aceitar a Política de Privacidade (LGPD)" }, { status: 400 });
+  }
+
+  // Captura do consentimento LGPD (data + IP, fins legais)
+  const lgpdConsentAt = new Date();
+  const lgpdIpAddress = ip || null;
 
   try {
     // Resolve parent (líder primeiro, coord como fallback)
@@ -96,6 +103,9 @@ export async function POST(req: NextRequest) {
           ...(cidade  && { cidade }),
           ...(zona    && { zona }),
           ...(nascimento && { dataNascimento: nascimento }),
+          // Atualiza o consentimento LGPD a cada cadastro (registra reaceite)
+          lgpdConsentAt,
+          lgpdIpAddress,
         },
       });
       contactId = updated.id;
@@ -115,6 +125,8 @@ export async function POST(req: NextRequest) {
           cidade: cidade ?? null,
           zona: zona ?? null,
           dataNascimento: nascimento,
+          lgpdConsentAt,
+          lgpdIpAddress,
         },
       });
       contactId = created.id;

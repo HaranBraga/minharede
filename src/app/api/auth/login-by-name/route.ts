@@ -2,17 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signSession, SESSION_COOKIE } from "@/lib/auth";
 import { slugify } from "@/lib/slug";
-import { logRedeLogin } from "@/lib/rede-log";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * Login por nome (sem senha — igual formelider antigo).
- *
- * Aceita { name } e busca um Contact cujo publicSlug ou nome bata,
- * cuja role.level seja <= 2 (apenas Coord Grupo, Coord, Líder podem
- * logar — apoiador NÃO).
+ * Login pelo nome (sem senha). Só funciona pra contatos que NÃO têm
+ * RedeUser configurado — quando admin cria credenciais, esse contato
+ * passa a exigir senha via /api/auth/login.
  */
 export async function POST(req: NextRequest) {
   const { name } = await req.json().catch(() => ({}));
@@ -29,14 +26,16 @@ export async function POST(req: NextRequest) {
         { name: { equals: trimmed, mode: "insensitive" } },
       ],
     },
-    include: { role: true },
+    include: { role: true, redeUser: { select: { id: true } } },
   });
 
   if (!contact) {
-    return NextResponse.json({ error: "Não encontrado na rede" }, { status: 404 });
+    return NextResponse.json({ error: "Não encontrado" }, { status: 404 });
   }
-
-  await logRedeLogin({ type: "member", actorName: contact.name, contactId: contact.id, req });
+  if (contact.redeUser) {
+    // Tem credenciais configuradas — exige login com senha
+    return NextResponse.json({ error: "needs_password", username: null }, { status: 401 });
+  }
 
   const token = await signSession({
     type: "member",
