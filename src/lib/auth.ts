@@ -1,4 +1,3 @@
-import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -7,86 +6,24 @@ import { SESSION_COOKIE, signSession, verifySession, type SessionPayload } from 
 export { SESSION_COOKIE, signSession, verifySession };
 export type { SessionPayload };
 
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 10);
-}
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
-}
-
-export type CurrentUser = {
-  id: string;
-  name: string;
-  username: string | null;
-  isAdmin: boolean;
-  contactId: string | null;
-  /** Level do role do contato vinculado (0=Coord Grupo, 1=Coord, 2=Líder, 3=Apoiador). */
-  roleLevel: number | null;
-  /** Slug do contato — usado pra montar links públicos. */
-  contactSlug: string | null;
-  /** Nome do contato vinculado (pra exibir no header). */
-  contactName: string | null;
-};
-
-/** Lê cookie e busca user atualizado no banco. */
-export async function getCurrentUser(): Promise<CurrentUser | null> {
+export async function getSession(): Promise<SessionPayload | null> {
   const token = cookies().get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  const payload = await verifySession(token);
-  if (!payload) return null;
-  const user = await prisma.user.findUnique({
-    where: { id: payload.uid },
-    select: {
-      id: true, name: true, username: true, isAdmin: true, active: true, contactId: true,
-      contact: {
-        select: {
-          id: true, name: true, publicSlug: true,
-          role: { select: { level: true, key: true } },
-        },
-      },
-    },
-  });
-  if (!user || !user.active) return null;
-  return {
-    id: user.id,
-    name: user.name,
-    username: user.username,
-    isAdmin: user.isAdmin,
-    contactId: user.contactId,
-    roleLevel: user.contact?.role?.level ?? null,
-    contactSlug: user.contact?.publicSlug ?? null,
-    contactName: user.contact?.name ?? null,
-  };
+  return verifySession(token);
 }
 
-export async function requireUser(): Promise<CurrentUser> {
-  const u = await getCurrentUser();
-  if (!u) redirect("/login");
-  return u;
+export async function isAdmin(): Promise<boolean> {
+  const s = await getSession();
+  return s?.type === "admin";
 }
 
-export async function requireAdmin(): Promise<CurrentUser> {
-  const u = await requireUser();
-  // "Admin" no minha-rede = User.isAdmin OU Coord Grupo (level 0)
-  const isCoordGrupo = u.roleLevel === 0;
-  if (!u.isAdmin && !isCoordGrupo) redirect("/dashboard");
-  return u;
-}
+/** Retorna IDs de Contact que estão na rede gerenciável do session. Admin vê tudo. */
+export async function descendantContactIds(s: SessionPayload | null): Promise<string[] | "all"> {
+  if (!s) return [];
+  if (s.type === "admin") return "all";
 
-/**
- * Retorna IDs de Contact que estão na "rede" (subárvore descendente)
- * do user, incluindo ele mesmo. Admin e Coord Grupo vêem TUDO.
- *
- * Usado pra filtrar listagens (apenas mostrar líderes/apoiadores que
- * o user pode gerenciar).
- */
-export async function descendantContactIds(user: CurrentUser): Promise<string[] | "all"> {
-  // Admin e Coord de Grupo veem tudo
-  if (user.isAdmin || user.roleLevel === 0) return "all";
-  if (!user.contactId) return [];
-
-  const ids = new Set<string>([user.contactId]);
-  let frontier: string[] = [user.contactId];
+  const ids = new Set<string>([s.contactId]);
+  let frontier: string[] = [s.contactId];
   for (let depth = 0; depth < 6 && frontier.length > 0; depth++) {
     const children = await prisma.contact.findMany({
       where: { parentId: { in: frontier } },
@@ -104,23 +41,15 @@ export async function descendantContactIds(user: CurrentUser): Promise<string[] 
   return Array.from(ids);
 }
 
-/**
- * Verifica se um Contact está na rede gerenciável do user (descendente
- * direto ou recursivo). Usado pra autorizar update/delete em /api/leaders/:id.
- */
-export async function canManageContact(user: CurrentUser, targetContactId: string): Promise<boolean> {
-  const ids = await descendantContactIds(user);
+export async function canManageContact(s: SessionPayload | null, targetId: string): Promise<boolean> {
+  const ids = await descendantContactIds(s);
   if (ids === "all") return true;
-  return ids.includes(targetContactId);
+  return ids.includes(targetId);
 }
 
-/**
- * Cargos que o user pode CRIAR (níveis abaixo do dele).
- * Admin/Coord Grupo: todos abaixo dele.
- */
-export function rolesAllowedToCreate(user: CurrentUser): { minLevel: number } {
-  // Admin sem contato: pode criar a partir do Coord Grupo (level 0)
-  if (user.isAdmin && user.roleLevel == null) return { minLevel: 0 };
-  // Tem contato: só níveis ESTRITAMENTE maiores que o seu
-  return { minLevel: (user.roleLevel ?? -1) + 1 };
+/** Levels que o session pode criar. Admin: todos. Member: só níveis abaixo do dele. */
+export function rolesAllowedToCreate(s: SessionPayload | null): { minLevel: number } {
+  if (!s) return { minLevel: 99 };
+  if (s.type === "admin") return { minLevel: 0 };
+  return { minLevel: s.roleLevel + 1 };
 }

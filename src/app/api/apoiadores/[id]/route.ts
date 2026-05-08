@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser, canManageContact } from "@/lib/auth";
+import { getSession, canManageContact } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if (!await canManageContact(me, params.id)) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!await canManageContact(s, params.id)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
   const body = await req.json().catch(() => ({}));
@@ -27,15 +27,14 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     const d = String(phone).replace(/\D/g, "");
     data.phone = d.startsWith("55") ? d : `55${d}`;
   }
-
   const updated = await prisma.contact.update({ where: { id: params.id }, data });
   return NextResponse.json(updated);
 }
 
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if (!await canManageContact(me, params.id)) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!await canManageContact(s, params.id)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
   await prisma.contact.delete({ where: { id: params.id } });

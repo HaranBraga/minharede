@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser, descendantContactIds, rolesAllowedToCreate } from "@/lib/auth";
+import { getSession, descendantContactIds, rolesAllowedToCreate } from "@/lib/auth";
 import { placeholderPhone, uniqueSlug } from "@/lib/rede";
 
 export const dynamic = "force-dynamic";
@@ -14,22 +14,14 @@ async function getApoiadorRoleId(): Promise<string | null> {
   return r?.id ?? null;
 }
 
-/**
- * GET /api/apoiadores
- * Lista apoiadores que o user pode ver:
- *  - admin/coord grupo: todos
- *  - coord: apoiadores de qualquer líder dele (descendentes recursivos)
- *  - líder: apoiadores diretos dele (parentId = me.contactId)
- */
 export async function GET(_req: NextRequest) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const roleId = await getApoiadorRoleId();
   if (!roleId) return NextResponse.json({ data: [] });
 
   const where: any = { roleId };
-  const allowed = await descendantContactIds(me);
+  const allowed = await descendantContactIds(s);
   if (allowed !== "all") where.id = { in: allowed };
 
   const rows = await prisma.contact.findMany({
@@ -44,31 +36,23 @@ export async function GET(_req: NextRequest) {
   return NextResponse.json({ data: rows });
 }
 
-/**
- * POST /api/apoiadores (líder e acima)
- * Body: { name, phone?, parentId? }
- *   parentId padrão: contato do user (líder cria abaixo dele)
- */
 export async function POST(req: NextRequest) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
   const roleId = await getApoiadorRoleId();
   if (!roleId) return NextResponse.json({ error: "Cargo de apoiador não configurado" }, { status: 500 });
-
-  const apoiadorLevel = 3;
-  const allowed = rolesAllowedToCreate(me);
-  if (apoiadorLevel < allowed.minLevel) {
-    return NextResponse.json({ error: "Você não tem permissão" }, { status: 403 });
+  const allowed = rolesAllowedToCreate(s);
+  if (3 < allowed.minLevel) {
+    return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
 
   const { name, phone, parentId } = await req.json().catch(() => ({}));
   if (!name?.trim()) return NextResponse.json({ error: "Nome obrigatório" }, { status: 400 });
 
-  // parent default = contactId do user
-  let resolvedParent = parentId ?? me.contactId ?? null;
+  const resolvedParent = parentId
+    ?? (s.type === "member" ? s.contactId : null);
 
-  let phoneClean: string | undefined;
+  let phoneClean: string;
   if (phone?.trim()) {
     const d = String(phone).replace(/\D/g, "");
     phoneClean = d.startsWith("55") ? d : `55${d}`;

@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifySession, SESSION_COOKIE } from "@/lib/auth-edge";
 
 const PUBLIC_PATHS = [
-  "/",                        // landing pública (formulário do apoiador)
+  "/",
   "/login",
-  "/api/auth/login",
+  "/api/auth/admin/login",
+  "/api/auth/login-by-name",
   "/api/auth/logout",
   "/api/auth/me",
   "/api/submit",
-  "/api/leaders/by-name",     // resolve coord do líder no form público
+  "/api/leaders/by-name",
+  "/api/coordinators-public",  // lista pública (só nomes) pra mostrar no /login
 ];
 
 function isPublic(path: string): boolean {
@@ -31,9 +33,8 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // /admin* só pra isAdmin OU Coord Grupo (level 0)
-  const isCoordGrupo = session.roleLevel === 0;
-  if ((path.startsWith("/admin") || path.startsWith("/api/admin")) && !session.isAdmin && !isCoordGrupo) {
+  // /admin* e /api/admin* só admin
+  if ((path.startsWith("/admin") || path.startsWith("/api/admin")) && session.type !== "admin") {
     if (path.startsWith("/api/")) {
       return NextResponse.json({ error: "Apenas admin" }, { status: 403 });
     }

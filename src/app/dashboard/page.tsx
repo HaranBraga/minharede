@@ -4,35 +4,35 @@ import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/AppHeader";
 import { NetworkBrowser } from "@/components/NetworkBrowser";
 
-interface Me {
-  id: string; name: string; isAdmin: boolean;
-  contactId: string | null; roleLevel: number | null;
-  contactSlug: string | null; contactName: string | null;
+interface Session {
+  type: "admin" | "member";
+  contactId?: string; slug?: string; name?: string;
+  roleLevel?: number; roleLabel?: string;
 }
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [me, setMe] = useState<Me | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
 
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
-      if (!d.user) { router.replace("/login"); return; }
-      setMe(d.user);
+      if (!d.session) { router.replace("/login"); return; }
+      if (d.session.type === "admin") { router.replace("/admin"); return; }
+      setSession(d.session);
     });
   }, [router]);
 
-  if (!me) return <div className="min-h-screen flex items-center justify-center text-sm text-gray-400">Carregando...</div>;
+  if (!session) return <div className="min-h-screen flex items-center justify-center text-sm text-gray-400">Carregando...</div>;
 
-  const isAdminLike = me.isAdmin || me.roleLevel === 0;
-  const subtitle = me.contactName
-    ? `${me.contactName}${me.roleLevel != null ? ` · nível ${me.roleLevel}` : ""}`
-    : me.name;
+  const subtitle = session.name
+    ? `${session.name} · ${session.roleLabel ?? ""}`
+    : "Minha rede";
 
   return (
     <div className="min-h-screen pb-12">
-      <AppHeader subtitle={subtitle} showAdminLink={isAdminLike} />
+      <AppHeader subtitle={subtitle} showAdminLink={false} />
       <main className="max-w-3xl mx-auto px-4 py-4">
-        <NetworkBrowser me={me} />
+        <NetworkBrowser session={session} />
       </main>
     </div>
   );

@@ -1,12 +1,14 @@
 // Startup do minha-rede.
 //
-// O schema é compartilhado com conect-crm e painel-360. O seed completo
-// (roles, kanban, etiquetas, admin) acontece no startup do conect-crm.
-// Aqui só garantimos que os 4 PersonRole essenciais pra rede existam,
-// caso o minha-rede suba antes do CRM.
+// Não cria User na tabela compartilhada (regra do user: usuários do
+// minha-rede são SEPARADOS dos do CRM/painel-360). Identidade dos
+// coords/líderes é o próprio Contact, sem User. Admin do minha-rede
+// é a senha em ADMIN_PASSWORD env (sem User).
+//
+// Aqui só garantimos que os 4 PersonRole essenciais existam, caso
+// o minha-rede suba antes do CRM/painel-360.
 
 const { PrismaClient } = require("@prisma/client");
-const bcrypt = require("bcryptjs");
 const prisma = new PrismaClient();
 
 const NETWORK_ROLES = [
@@ -24,37 +26,13 @@ async function ensureRoles() {
       create: role,
     });
   }
-  console.log("✅ Cargos da rede verificados (Coordenador de Grupo, Coordenador, Líder, Apoiador)");
-}
-
-async function ensureAdmin() {
-  const userCount = await prisma.user.count();
-  if (userCount > 0) {
-    console.log(`✅ Usuários: ${userCount} cadastrados`);
-    return;
-  }
-  const username = (process.env.ADMIN_USERNAME || "admin").toLowerCase();
-  const password = process.env.ADMIN_PASSWORD || "admin123";
-  const hashed = await bcrypt.hash(password, 10);
-  await prisma.user.create({
-    data: {
-      name: "Administrador",
-      username,
-      password: hashed,
-      isAdmin: true,
-      modules: [],
-      active: true,
-    },
-  });
-  console.log(`✅ Admin inicial criado — usuário: ${username}`);
-  console.log("   ⚠ Mude a senha imediatamente");
+  console.log("✅ Cargos da rede verificados");
 }
 
 async function main() {
   await ensureRoles();
-  await ensureAdmin();
 }
 
 main()
-  .catch((e) => { console.error("Startup seed error:", e); })
+  .catch((e) => { console.error("Startup error:", e); })
   .finally(() => prisma.$disconnect());

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser, descendantContactIds, rolesAllowedToCreate } from "@/lib/auth";
+import { getSession, descendantContactIds, rolesAllowedToCreate } from "@/lib/auth";
 import { getCoordRoleId, getLiderRoleId, placeholderPhone, publicLink, uniqueSlug } from "@/lib/rede";
 
 export const dynamic = "force-dynamic";
@@ -11,24 +11,14 @@ function baseUrl(req: NextRequest): string {
     ?? `${req.nextUrl.protocol}//${req.nextUrl.host}`;
 }
 
-/**
- * GET /api/leaders
- * Lista os líderes que o user pode ver:
- *  - admin / coord grupo: todos
- *  - coord: líderes vinculados a ele (descendentes diretos)
- *  - líder: NÃO usa esse endpoint (líder vê apoiadores via outro endpoint)
- */
 export async function GET(req: NextRequest) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const liderRole = await getLiderRoleId();
   const where: any = { roleId: liderRole };
-
-  const allowed = await descendantContactIds(me);
-  if (allowed !== "all") {
-    where.id = { in: allowed };
-  }
+  const allowed = await descendantContactIds(s);
+  if (allowed !== "all") where.id = { in: allowed };
 
   const rows = await prisma.contact.findMany({
     where,
@@ -48,38 +38,25 @@ export async function GET(req: NextRequest) {
   });
 }
 
-/**
- * POST /api/leaders
- * Cria um líder. parentId padrão = contato do user atual (líder novo
- * fica abaixo dele). Validação: user precisa poder criar nível LIDER (2)
- * acima do dele.
- */
 export async function POST(req: NextRequest) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+
+  const allowed = rolesAllowedToCreate(s);
+  if (2 < allowed.minLevel) {
+    return NextResponse.json({ error: "Você não tem permissão pra criar líderes" }, { status: 403 });
+  }
 
   const { name, coordinator: coordName } = await req.json().catch(() => ({}));
   if (!name?.trim()) return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
 
   const liderRole = await getLiderRoleId();
-  const liderLevel = 2;
-  const allowed = rolesAllowedToCreate(me);
-  if (liderLevel < allowed.minLevel) {
-    return NextResponse.json({ error: "Você não tem permissão pra criar líderes" }, { status: 403 });
-  }
-
-  const trimmed = String(name).trim();
   const coordRole = await getCoordRoleId();
+  const trimmed = String(name).trim();
 
-  // Resolve parent (coordenador):
-  // - admin/coord grupo: pode escolher qualquer coord (ou nenhum)
-  // - coord: ignora `coordinator`, vincula a si mesmo
-  // - líder: não chega aqui (não tem permissão)
+  // parent: admin pode escolher; member coord vincula a si; outros sem parent
   let parentId: string | null = null;
-  if (me.roleLevel === 1) {
-    // user é coord → vincula a ele
-    parentId = me.contactId;
-  } else if (coordName?.trim()) {
+  if (s.type === "admin" && coordName?.trim()) {
     const parent = await prisma.contact.findFirst({
       where: {
         roleId: coordRole,
@@ -91,11 +68,25 @@ export async function POST(req: NextRequest) {
       select: { id: true },
     });
     parentId = parent?.id ?? null;
-  } else if (me.roleLevel === 0 || me.isAdmin) {
-    parentId = null; // admin/coord grupo pode criar líder solto
+  } else if (s.type === "member" && s.roleLevel === 1) {
+    parentId = s.contactId;
+  } else if (s.type === "member" && s.roleLevel === 0) {
+    // coord grupo pode criar líder solto ou abaixo de coord — sem coord param fica solto
+    if (coordName?.trim()) {
+      const parent = await prisma.contact.findFirst({
+        where: {
+          roleId: coordRole,
+          OR: [
+            { name: { equals: coordName.trim(), mode: "insensitive" } },
+            { publicSlug: coordName.trim().toLowerCase() },
+          ],
+        },
+        select: { id: true },
+      });
+      parentId = parent?.id ?? null;
+    }
   }
 
-  // Líder duplicado por nome?
   const existing = await prisma.contact.findFirst({
     where: { roleId: liderRole, name: { equals: trimmed, mode: "insensitive" } },
     select: { id: true },
@@ -117,7 +108,6 @@ export async function POST(req: NextRequest) {
       parent: { select: { name: true } },
     },
   });
-
   const base = baseUrl(req);
   return NextResponse.json(
     {

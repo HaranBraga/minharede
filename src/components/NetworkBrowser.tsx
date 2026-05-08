@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Plus, Copy, Search, ChevronDown, ChevronRight, Trash2, Edit2, Phone, Link as LinkIcon } from "lucide-react";
+import { Plus, Copy, Search, ChevronDown, ChevronRight, Trash2, Edit2, Link as LinkIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import { BottomSheet } from "./BottomSheet";
 
@@ -11,10 +11,9 @@ interface Contact {
   role: Role;
   _count: { children: number };
 }
-interface Me {
-  id: string; name: string; isAdmin: boolean;
-  contactId: string | null; roleLevel: number | null;
-  contactSlug: string | null; contactName: string | null;
+interface Session {
+  type: "admin" | "member";
+  contactId?: string; slug?: string; name?: string; roleLevel?: number; roleLabel?: string;
 }
 
 function publicLinkFor(slug: string | null, name: string, kind: "lider" | "coord" | "coord_form"): string {
@@ -22,17 +21,22 @@ function publicLinkFor(slug: string | null, name: string, kind: "lider" | "coord
   return `${window.location.origin}/?${kind}=${encodeURIComponent(s)}`;
 }
 function linkKindFor(level: number): "lider" | "coord" | "coord_form" {
-  if (level === 0 || level === 1) return "coord";
-  return "lider";
+  return level <= 1 ? "coord" : "lider";
 }
 
-export function NetworkBrowser({ me }: { me: Me }) {
+export function NetworkBrowser({ session }: { session: Session }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [createTarget, setCreateTarget] = useState<{ id: string; name: string } | null>(null);
+  const [createTarget, setCreateTarget] = useState<{ id: string | null; name: string } | null>(null);
   const [editing, setEditing] = useState<Contact | null>(null);
+
+  const isAdmin = session.type === "admin";
+  const myContactId = session.contactId ?? null;
+  const myRoleLevel = session.roleLevel ?? null;
+  const mySlug = session.slug ?? null;
+  const myName = session.name ?? null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,11 +52,10 @@ export function NetworkBrowser({ me }: { me: Me }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Top-level visíveis: filhos do contactId do user (ou tudo se admin sem contato)
   const topLevel = useMemo(() => {
-    if (me.isAdmin && !me.contactId) return contacts.filter(c => !c.parentId);
-    return contacts.filter(c => c.parentId === me.contactId);
-  }, [contacts, me]);
+    if (isAdmin) return contacts.filter(c => !c.parentId);
+    return contacts.filter(c => c.parentId === myContactId);
+  }, [contacts, isAdmin, myContactId]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -64,7 +67,7 @@ export function NetworkBrowser({ me }: { me: Me }) {
     const isApoiador = c.role.level >= 3;
     if (!confirm(`Excluir "${c.name}"?${!isApoiador ? "\nSeus descendentes ficarão sem coordenador/líder, mas não serão excluídos." : ""}`)) return;
     const endpoint =
-      c.role.level === 0 || c.role.level === 1 ? `/api/coordinators/${c.id}` :
+      c.role.level <= 1 ? `/api/coordinators/${c.id}` :
       c.role.level === 2 ? `/api/leaders/${c.id}` :
       `/api/apoiadores/${c.id}`;
     const r = await fetch(endpoint, { method: "DELETE" });
@@ -75,18 +78,18 @@ export function NetworkBrowser({ me }: { me: Me }) {
 
   return (
     <div className="space-y-4">
-      {/* link próprio */}
-      {me.contactSlug && (
+      {/* Link próprio (member) */}
+      {!isAdmin && mySlug && myName && (
         <div className="bg-white rounded-2xl border border-gray-200 p-4">
           <div className="flex items-center gap-2 mb-2">
             <LinkIcon size={14} className="text-brand-600" />
             <p className="text-sm font-semibold text-gray-700">Seu link público</p>
           </div>
-          <CopyableLink url={publicLinkFor(me.contactSlug, me.contactName ?? "", linkKindFor(me.roleLevel ?? 99))} />
-          {me.roleLevel != null && me.roleLevel <= 1 && (
+          <CopyableLink url={publicLinkFor(mySlug, myName, linkKindFor(myRoleLevel ?? 99))} />
+          {myRoleLevel != null && myRoleLevel <= 1 && (
             <div className="mt-2">
-              <p className="text-[11px] text-gray-500 mb-1">Link de formulário (cadastro direto)</p>
-              <CopyableLink url={publicLinkFor(me.contactSlug, me.contactName ?? "", "coord_form")} />
+              <p className="text-[11px] text-gray-500 mb-1">Link de formulário (cadastra direto pra você)</p>
+              <CopyableLink url={publicLinkFor(mySlug, myName, "coord_form")} />
             </div>
           )}
         </div>
@@ -101,9 +104,9 @@ export function NetworkBrowser({ me }: { me: Me }) {
               placeholder="Buscar na rede..."
               className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-600" />
           </div>
-          {me.contactId && roles.length > 0 && (
+          {roles.length > 0 && (
             <button
-              onClick={() => setCreateTarget({ id: me.contactId!, name: me.contactName ?? "você" })}
+              onClick={() => setCreateTarget({ id: myContactId, name: isAdmin ? "(raiz)" : (myName ?? "você") })}
               className="text-xs font-semibold text-white bg-brand-600 active:bg-brand-700 rounded-xl px-3 py-2.5 flex items-center gap-1 shrink-0">
               <Plus size={14} /> Adicionar
             </button>
@@ -117,9 +120,10 @@ export function NetworkBrowser({ me }: { me: Me }) {
         <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100">
           {filtered.length === 0 && <p className="py-8 text-center text-sm text-gray-400">Nada encontrado</p>}
           {filtered.map(c => (
-            <ContactRow key={c.id} contact={c} onEdit={() => setEditing(c)} onDelete={() => deleteContact(c)}
-              onCreate={(c.role.level < 3) ? () => setCreateTarget({ id: c.id, name: c.name }) : undefined}
-              showCreate={me.isAdmin || me.roleLevel === 0 || (me.roleLevel != null && c.role.level >= me.roleLevel)} />
+            <ContactRow key={c.id} contact={c}
+              onEdit={() => setEditing(c)} onDelete={() => deleteContact(c)}
+              onCreate={c.role.level < 3 ? () => setCreateTarget({ id: c.id, name: c.name }) : undefined}
+              showCreate={isAdmin || (myRoleLevel != null && c.role.level >= myRoleLevel)} />
           ))}
         </div>
       )}
@@ -137,7 +141,7 @@ export function NetworkBrowser({ me }: { me: Me }) {
                   onEdit={setEditing}
                   onDelete={deleteContact}
                   onCreate={(target) => setCreateTarget(target)}
-                  me={me} />
+                  isAdmin={isAdmin} myRoleLevel={myRoleLevel} />
               ))}
             </div>
           )}
@@ -145,12 +149,12 @@ export function NetworkBrowser({ me }: { me: Me }) {
       )}
 
       {createTarget && (
-        <CreateModal me={me} parent={createTarget} roles={roles}
+        <CreateModal session={session} parent={createTarget} roles={roles}
           onClose={() => setCreateTarget(null)}
           onSaved={() => { setCreateTarget(null); load(); }} />
       )}
       {editing && (
-        <EditModal contact={editing}
+        <EditModal contact={editing} isAdmin={isAdmin}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); load(); }} />
       )}
@@ -206,7 +210,7 @@ function ContactRow({ contact, onEdit, onDelete, onCreate, showCreate }: {
             <Copy size={10} className="inline mr-1" />link
           </button>
         )}
-        {showCreate && onCreate && (
+        {showCreate && onCreate && contact.role.level < 3 && (
           <button onClick={onCreate} className="text-[11px] font-medium text-brand-700 bg-brand-50 border border-brand-100 rounded-lg px-2 py-1 active:bg-brand-100">
             <Plus size={10} className="inline mr-1" />abaixo
           </button>
@@ -222,20 +226,20 @@ function ContactRow({ contact, onEdit, onDelete, onCreate, showCreate }: {
   );
 }
 
-function TreeNode({ contact, all, depth, onEdit, onDelete, onCreate, me }: {
+function TreeNode({ contact, all, depth, onEdit, onDelete, onCreate, isAdmin, myRoleLevel }: {
   contact: Contact;
   all: Contact[];
   depth: number;
   onEdit: (c: Contact) => void;
   onDelete: (c: Contact) => void;
   onCreate: (target: { id: string; name: string }) => void;
-  me: Me;
+  isAdmin: boolean;
+  myRoleLevel: number | null;
 }) {
   const [open, setOpen] = useState(depth === 0);
   const children = all.filter(c => c.parentId === contact.id);
   const hasChildren = children.length > 0;
-  const canCreate = me.isAdmin || me.roleLevel === 0
-    || (me.roleLevel != null && contact.role.level >= me.roleLevel);
+  const canCreate = isAdmin || (myRoleLevel != null && contact.role.level >= myRoleLevel);
 
   return (
     <div className={depth === 0 ? "border-b border-gray-100 last:border-b-0" : ""}>
@@ -267,21 +271,22 @@ function TreeNode({ contact, all, depth, onEdit, onDelete, onCreate, me }: {
             <button onClick={() => {
               const link = publicLinkFor(contact.publicSlug, contact.name, linkKindFor(contact.role.level));
               navigator.clipboard.writeText(link); toast.success("Link copiado");
-            }} className="p-1.5 text-gray-400 active:text-gray-700" title="Copiar link"><Copy size={13} /></button>
+            }} className="p-1.5 text-gray-400 active:text-gray-700"><Copy size={13} /></button>
           )}
           {canCreate && contact.role.level < 3 && (
             <button onClick={() => onCreate({ id: contact.id, name: contact.name })}
-              className="p-1.5 text-brand-600 active:text-brand-700" title="Adicionar abaixo"><Plus size={14} /></button>
+              className="p-1.5 text-brand-600 active:text-brand-700"><Plus size={14} /></button>
           )}
-          <button onClick={() => onEdit(contact)} className="p-1.5 text-gray-400 active:text-gray-700" title="Editar"><Edit2 size={13} /></button>
-          <button onClick={() => onDelete(contact)} className="p-1.5 text-red-400 active:text-red-600" title="Excluir"><Trash2 size={13} /></button>
+          <button onClick={() => onEdit(contact)} className="p-1.5 text-gray-400 active:text-gray-700"><Edit2 size={13} /></button>
+          <button onClick={() => onDelete(contact)} className="p-1.5 text-red-400 active:text-red-600"><Trash2 size={13} /></button>
         </div>
       </div>
       {hasChildren && open && (
         <div>
           {children.map(c => (
             <TreeNode key={c.id} contact={c} all={all} depth={depth + 1}
-              onEdit={onEdit} onDelete={onDelete} onCreate={onCreate} me={me} />
+              onEdit={onEdit} onDelete={onDelete} onCreate={onCreate}
+              isAdmin={isAdmin} myRoleLevel={myRoleLevel} />
           ))}
         </div>
       )}
@@ -289,9 +294,9 @@ function TreeNode({ contact, all, depth, onEdit, onDelete, onCreate, me }: {
   );
 }
 
-function CreateModal({ me, parent, roles, onClose, onSaved }: {
-  me: Me;
-  parent: { id: string; name: string };
+function CreateModal({ session, parent, roles, onClose, onSaved }: {
+  session: Session;
+  parent: { id: string | null; name: string };
   roles: Role[];
   onClose: () => void;
   onSaved: () => void;
@@ -310,7 +315,7 @@ function CreateModal({ me, parent, roles, onClose, onSaved }: {
 
       let endpoint = "/api/apoiadores";
       let body: any = { name, phone, parentId: parent.id };
-      if (role.level === 0 || role.level === 1) {
+      if (role.level <= 1) {
         endpoint = "/api/coordinators";
         body = { name };
       } else if (role.level === 2) {
@@ -333,7 +338,7 @@ function CreateModal({ me, parent, roles, onClose, onSaved }: {
     <BottomSheet open onClose={onClose} title="Adicionar à Rede">
       <form onSubmit={submit} className="flex flex-col gap-4">
         <p className="text-xs text-gray-500">
-          Criando abaixo de <span className="font-semibold text-gray-700">{parent.name}</span>
+          {parent.id ? <>Criando abaixo de <span className="font-semibold text-gray-700">{parent.name}</span></> : <>Criando na raiz da rede</>}
         </p>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1.5">Cargo *</label>
@@ -364,8 +369,9 @@ function CreateModal({ me, parent, roles, onClose, onSaved }: {
   );
 }
 
-function EditModal({ contact, onClose, onSaved }: {
+function EditModal({ contact, isAdmin, onClose, onSaved }: {
   contact: Contact;
+  isAdmin: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -381,7 +387,7 @@ function EditModal({ contact, onClose, onSaved }: {
     setBusy(true);
     try {
       const endpoint =
-        contact.role.level === 0 || contact.role.level === 1 ? `/api/coordinators/${contact.id}` :
+        contact.role.level <= 1 ? `/api/coordinators/${contact.id}` :
         contact.role.level === 2 ? `/api/leaders/${contact.id}` :
         `/api/apoiadores/${contact.id}`;
       const r = await fetch(endpoint, {

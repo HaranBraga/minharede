@@ -6,20 +6,9 @@ import { getCoordRoleId, getLiderRoleId, placeholderPhone, uniqueSlug } from "@/
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/**
- * Import CSV no formato do formelider antigo. Aceita:
- *   Nome,Link,Coordenador
- *   "Mario","...","João"
- *
- *   #COORDENADORES
- *   Nome,Link
- *   "João","..."
- *
- * Find-or-create por nome. Líder é vinculado ao coord pelo nome.
- */
 export async function POST(req: NextRequest) {
-  const session = await getSession();
-  if (session?.type !== "admin") return NextResponse.json({ error: "Apenas admin" }, { status: 403 });
+  const s = await getSession();
+  if (s?.type !== "admin") return NextResponse.json({ error: "Apenas admin" }, { status: 403 });
 
   const { csv } = await req.json().catch(() => ({}));
   if (!csv) return NextResponse.json({ error: "Nenhum dado CSV enviado." }, { status: 400 });
@@ -45,7 +34,6 @@ export async function POST(req: NextRequest) {
 
   const [coordRole, liderRole] = await Promise.all([getCoordRoleId(), getLiderRoleId()]);
 
-  // Coordenadores
   let coordCount = 0;
   const coordIdByName = new Map<string, string>();
   for (const line of coordLines) {
@@ -69,20 +57,17 @@ export async function POST(req: NextRequest) {
     coordCount++;
   }
 
-  // Líderes
   let leaderCount = 0;
   for (const line of leaderLines) {
     const parts = parseCsvLine(line);
     if (parts.length < 1 || !parts[0]) continue;
     const name = parts[0];
     const coordName = parts[2] || "";
-
     const exists = await prisma.contact.findFirst({
       where: { roleId: liderRole, name: { equals: name, mode: "insensitive" } },
       select: { id: true },
     });
     if (exists) continue;
-
     let parentId: string | null = null;
     if (coordName) {
       parentId = coordIdByName.get(coordName.toLowerCase()) ?? null;
@@ -95,7 +80,6 @@ export async function POST(req: NextRequest) {
         if (parentId) coordIdByName.set(coordName.toLowerCase(), parentId);
       }
     }
-
     const slug = await uniqueSlug(name);
     await prisma.contact.create({
       data: { name, phone: placeholderPhone(), publicSlug: slug, roleId: liderRole, parentId, source: "rede-import" },

@@ -1,24 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser, descendantContactIds } from "@/lib/auth";
+import { getSession, descendantContactIds } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/**
- * Retorna a "rede" do user atual em formato pronto pra renderização hierárquica:
- *  - admin / coord grupo: rede inteira (todos os Contacts)
- *  - outros: descendentes recursivos do contato vinculado (incluindo ele)
- *
- * Resposta: { rootContactId, rootName, contacts: [...], canCreate: boolean }
- */
-export async function GET(_req: NextRequest) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+export async function GET() {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const allowed = await descendantContactIds(me);
-
+  const allowed = await descendantContactIds(s);
   const where: any = allowed === "all" ? {} : { id: { in: allowed } };
+
   const contacts = await prisma.contact.findMany({
     where,
     select: {
@@ -31,11 +24,10 @@ export async function GET(_req: NextRequest) {
   });
 
   return NextResponse.json({
-    rootContactId: me.contactId,
-    rootName: me.contactName,
-    rootRoleLevel: me.roleLevel,
-    iAmAdmin: me.isAdmin,
-    iAmCoordGrupo: me.roleLevel === 0,
+    rootContactId: s.type === "admin" ? null : s.contactId,
+    rootName: s.type === "admin" ? null : s.name,
+    rootRoleLevel: s.type === "admin" ? null : s.roleLevel,
+    iAmAdmin: s.type === "admin",
     contacts,
   });
 }

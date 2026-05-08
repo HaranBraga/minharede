@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser, canManageContact } from "@/lib/auth";
+import { getSession, canManageContact } from "@/lib/auth";
 import { getCoordRoleId, publicLink, uniqueSlug } from "@/lib/rede";
 
 export const dynamic = "force-dynamic";
@@ -12,9 +12,9 @@ function baseUrl(req: NextRequest): string {
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if (!await canManageContact(me, params.id)) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!await canManageContact(s, params.id)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
 
@@ -24,9 +24,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const trimmed = String(name).trim();
   const newSlug = await uniqueSlug(trimmed, params.id);
 
-  // Apenas admin/coord grupo pode reatribuir parent (coordinator)
   let dataExtra: any = {};
-  if ((me.isAdmin || me.roleLevel === 0) && coordName !== undefined) {
+  if (s.type === "admin" && coordName !== undefined) {
     const coordRole = await getCoordRoleId();
     let parentId: string | null = null;
     if (coordName?.trim()) {
@@ -53,7 +52,6 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       parent: { select: { name: true } },
     },
   });
-
   const base = baseUrl(req);
   return NextResponse.json({
     id: updated.id, name: updated.name,
@@ -63,9 +61,9 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if (!await canManageContact(me, params.id)) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!await canManageContact(s, params.id)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
   await prisma.contact.delete({ where: { id: params.id } });

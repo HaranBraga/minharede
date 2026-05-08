@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser, canManageContact } from "@/lib/auth";
+import { getSession, canManageContact } from "@/lib/auth";
 import { publicLink, uniqueSlug } from "@/lib/rede";
 
 export const dynamic = "force-dynamic";
@@ -12,15 +12,13 @@ function baseUrl(req: NextRequest): string {
 }
 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if (!await canManageContact(me, params.id)) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!await canManageContact(s, params.id)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
-
   const { name } = await req.json().catch(() => ({}));
   if (!name?.trim()) return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
-
   const trimmed = String(name).trim();
   const newSlug = await uniqueSlug(trimmed, params.id);
   const updated = await prisma.contact.update({
@@ -36,12 +34,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function DELETE(_: NextRequest, { params }: { params: { id: string } }) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-  if (!await canManageContact(me, params.id)) {
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  if (!await canManageContact(s, params.id)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }
-
   await prisma.contact.updateMany({
     where: { parentId: params.id },
     data: { parentId: null },

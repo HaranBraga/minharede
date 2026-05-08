@@ -11,21 +11,9 @@ function baseUrl(req: NextRequest): string {
     ?? `${req.nextUrl.protocol}//${req.nextUrl.host}`;
 }
 
-/**
- * Export CSV no formato do formelider antigo:
- *   Nome,Link,Coordenador
- *   "Mario","https://link.azecode.cloud/?lider=mario","João"
- *   ...
- *
- *   #COORDENADORES
- *   Nome,Link
- *   "João","https://link.azecode.cloud/?coord=joao"
- *
- * Inclui BOM UTF-8 pra Excel abrir certo.
- */
 export async function GET(req: NextRequest) {
-  const session = await getSession();
-  if (session?.type !== "admin") return NextResponse.json({ error: "Apenas admin" }, { status: 403 });
+  const s = await getSession();
+  if (s?.type !== "admin") return NextResponse.json({ error: "Apenas admin" }, { status: 403 });
 
   const [liderRole, coordRole] = await Promise.all([getLiderRoleId(), getCoordRoleId()]);
   const [lideres, coords] = await Promise.all([

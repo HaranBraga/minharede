@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser, descendantContactIds } from "@/lib/auth";
+import { getSession, descendantContactIds } from "@/lib/auth";
 import { getCoordRoleId, getLiderRoleId, publicLink } from "@/lib/rede";
 
 export const dynamic = "force-dynamic";
@@ -11,10 +11,9 @@ function baseUrl(req: NextRequest): string {
     ?? `${req.nextUrl.protocol}//${req.nextUrl.host}`;
 }
 
-/** Lista líderes de um coord específico (nome ou slug). Filtra pela rede do user. */
 export async function GET(req: NextRequest, { params }: { params: { name: string } }) {
-  const me = await getCurrentUser();
-  if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+  const s = await getSession();
+  if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
   const coordRole = await getCoordRoleId();
   const decoded = decodeURIComponent(params.name);
@@ -30,8 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: { name: string
   });
   if (!coord) return NextResponse.json({ data: [] });
 
-  // valida que o coord está na rede do user
-  const allowed = await descendantContactIds(me);
+  const allowed = await descendantContactIds(s);
   if (allowed !== "all" && !allowed.includes(coord.id)) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }

@@ -12,12 +12,11 @@ export default function Page() {
 }
 
 /**
- * Landing pública.
- * Detecta query params e renderiza o fluxo certo:
- *   - ?lider=NOME       → formulário do apoiador, vinculado ao líder
- *   - ?coord_form=NOME  → formulário do apoiador, vinculado direto ao coord
- *   - ?coord=NOME       → redireciona pro login (sem auto-login — auth real)
- *   - sem param         → redireciona pro login (ou dashboard se logado)
+ * Landing pública. Reproduz a dinâmica dos links do formelider:
+ *   - ?coord=NOME      → AUTO-LOGIN do coord (mesma URL antiga)
+ *   - ?coord_form=NOME → formulário do apoiador, vinculado direto ao coord
+ *   - ?lider=NOME      → formulário do apoiador, vinculado ao líder
+ *   - sem param        → redireciona pro login (ou painel se logado)
  */
 function Home() {
   const router = useRouter();
@@ -31,22 +30,37 @@ function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // ?coord=X → auto-login (igual formelider antigo)
     if (coord && !lider && !coordForm) {
-      router.replace("/login");
+      fetch("/api/auth/login-by-name", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: coord }),
+      }).then(async r => {
+        if (r.ok) {
+          // Limpa ?coord= da URL antes de ir pro dashboard
+          window.history.replaceState({}, "", window.location.pathname);
+          router.replace("/dashboard");
+        } else {
+          // Se não achou, manda pro login com nome pré-preenchido
+          router.replace(`/login?suggest=${encodeURIComponent(coord)}`);
+        }
+      }).catch(() => router.replace("/login"));
       return;
     }
+
+    // Sem param: vai pro painel se logado, senão login
     if (!lider && !coordForm) {
-      // sem nenhum param: tenta descobrir se está logado, senão login
       fetch("/api/auth/me").then(r => r.json()).then(d => {
-        if (d?.user) router.replace("/dashboard");
+        if (d?.session?.type === "admin") router.replace("/admin");
+        else if (d?.session?.type === "member") router.replace("/dashboard");
         else router.replace("/login");
       });
       return;
     }
-    const slug = lider || coordForm!;
+
+    // ?lider= → busca coord do líder pra preencher hidden no form
     if (lider) {
-      // tenta pegar o coord do líder
-      fetch(`/api/leaders/by-name/${encodeURIComponent(slug)}`)
+      fetch(`/api/leaders/by-name/${encodeURIComponent(lider)}`)
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (!d?.data) { setErrorMsg("Link inválido."); return; }
@@ -54,10 +68,14 @@ function Home() {
         })
         .catch(() => setErrorMsg("Erro ao carregar."))
         .finally(() => setLoading(false));
-    } else {
-      // coord_form — só usa o nome direto
-      setTarget({ id: "", name: coordForm!, coordinator: coordForm! });
+      return;
+    }
+
+    // ?coord_form= → form com coord pré-vinculado (sem buscar no banco)
+    if (coordForm) {
+      setTarget({ id: "", name: coordForm, coordinator: coordForm });
       setLoading(false);
+      return;
     }
   }, [lider, coord, coordForm, router]);
 
