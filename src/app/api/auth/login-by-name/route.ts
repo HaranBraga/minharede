@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { signSession, SESSION_COOKIE } from "@/lib/auth";
 import { slugify } from "@/lib/slug";
+import { logRedeLogin } from "@/lib/rede-log";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -34,6 +35,8 @@ export async function POST(req: NextRequest) {
   if (!contact) {
     return NextResponse.json({ error: "Não encontrado na rede" }, { status: 404 });
   }
+
+  await logRedeLogin({ type: "member", actorName: contact.name, contactId: contact.id, req });
 
   const token = await signSession({
     type: "member",

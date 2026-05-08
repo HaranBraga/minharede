@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { signSession, SESSION_COOKIE } from "@/lib/auth";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { logRedeLogin } from "@/lib/rede-log";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,6 +19,8 @@ export async function POST(req: NextRequest) {
   const expected = process.env.ADMIN_PASSWORD;
   if (!expected) return NextResponse.json({ error: "ADMIN_PASSWORD não configurada" }, { status: 500 });
   if (password !== expected) return NextResponse.json({ error: "Senha incorreta" }, { status: 401 });
+
+  await logRedeLogin({ type: "admin", actorName: "Admin", req });
 
   const token = await signSession({ type: "admin" });
   const res = NextResponse.json({ ok: true });

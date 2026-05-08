@@ -97,6 +97,7 @@ model Contact {
   customFields    Json?                                // valores dos campos personalizados (usado no Painel 360)
   contactNotes    ContactNote[]
   birthdayMessages BirthdayMessage[]
+  redeLoginLogs   RedeLoginLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -219,6 +220,24 @@ model User {
   auditLogs    AuditLog[]
 
   @@index([username])
+}
+
+// Log de logins do minha-rede. SEPARADO do AuditLog do CRM (regra:
+// usuários do minha-rede não se misturam com os do CRM/painel-360).
+// Registra cada login via /api/auth/admin/login ou /api/auth/login-by-name.
+model RedeLoginLog {
+  id        String   @id @default(cuid())
+  type      String   // "admin" | "member"
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  actorName String   // snapshot do nome
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([contactId, createdAt])
+  @@index([createdAt])
+  @@index([type, createdAt])
 }
 
 // Log de auditoria — registra ações relevantes do sistema.
