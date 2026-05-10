@@ -38,6 +38,9 @@ export interface ExplorerSession {
 const LEVEL_LABEL_SG: Record<number, string> = {
   0: "Coordenador de Grupo", 1: "Coordenador", 2: "Líder", 3: "Apoiador",
 };
+const LEVEL_LABEL_PL: Record<number, string> = {
+  0: "Coordenadores de Grupo", 1: "Coordenadores", 2: "Líderes", 3: "Apoiadores",
+};
 
 export function NetworkExplorer({ session }: { session: ExplorerSession }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -93,6 +96,18 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
       return a.name.localeCompare(b.name);
     });
   }, [contacts, currentId, search]);
+
+  // Agrupa por cargo pra ficar mais legível quando o nó tem mistura
+  // (ex: Coord Grupo com Coords + Líderes + Apoiadores diretos).
+  const groupedChildren = useMemo(() => {
+    const map = new Map<number, { level: number; role: Role | null; items: Contact[] }>();
+    for (const c of children) {
+      const g = map.get(c.role.level);
+      if (g) g.items.push(c);
+      else map.set(c.role.level, { level: c.role.level, role: c.role, items: [c] });
+    }
+    return Array.from(map.values()).sort((a, b) => a.level - b.level);
+  }, [children]);
 
   // Total descendentes recursivo
   const descendantCount = useMemo(() => {
@@ -281,12 +296,31 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
           canCreate={canCreateHere}
           onCreate={() => setShowCreate(true)} />
       ) : (
-        <div className="space-y-2">
-          {children.map(c => (
-            <ChildRow key={c.id} contact={c}
-              onOpen={() => navigateTo(c.id)}
-              onEdit={() => setEditingId(c.id)}
-              onDelete={() => deleteContact(c)} />
+        <div className="space-y-5">
+          {groupedChildren.map(group => (
+            <div key={group.level} className="space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                {group.role && (
+                  <span className="w-5 h-5 rounded-full"
+                    style={{ backgroundColor: group.role.bgColor }} />
+                )}
+                <h3 className="text-xs font-bold uppercase tracking-wide"
+                  style={{ color: group.role?.color ?? "#6b7280" }}>
+                  {LEVEL_LABEL_PL[group.level] ?? group.role?.label ?? ""}
+                </h3>
+                <span className="text-[11px] text-gray-400 font-medium">
+                  {group.items.length}
+                </span>
+              </div>
+              <div className="space-y-2">
+                {group.items.map(c => (
+                  <ChildRow key={c.id} contact={c}
+                    onOpen={() => navigateTo(c.id)}
+                    onEdit={() => setEditingId(c.id)}
+                    onDelete={() => deleteContact(c)} />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}
