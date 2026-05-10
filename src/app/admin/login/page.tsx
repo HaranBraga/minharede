@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { Eye, EyeOff, ShieldCheck, ChevronLeft } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, ChevronLeft, ArrowRight } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -36,41 +37,47 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-8 bg-gradient-to-br from-amber-50 to-white">
-      <div className="w-full max-w-sm">
-        <div className="bg-white rounded-2xl shadow-xl p-7">
-          <div className="text-center mb-6">
-            <div className="w-12 h-12 bg-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <ShieldCheck size={22} className="text-white" />
-            </div>
-            <h1 className="text-xl font-bold text-gray-900">Admin</h1>
-            <p className="text-xs text-gray-500 mt-1">Acesso administrativo</p>
-          </div>
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-amber-50 via-white to-orange-50 flex items-center justify-center px-4 py-8">
+      <div className="pointer-events-none absolute -top-32 -right-32 w-80 h-80 rounded-full bg-amber-500 opacity-10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-orange-500 opacity-10 blur-3xl" />
 
-          <form onSubmit={submit} className="space-y-3">
+      <div className="w-full max-w-sm relative animate-scale-in">
+        <div className="text-center mb-7">
+          <div className="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-amber-500/30">
+            <ShieldCheck size={28} className="text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Painel Admin</h1>
+          <p className="text-sm text-gray-500 mt-1">Acesso restrito</p>
+        </div>
+
+        <div className="bg-white rounded-3xl shadow-xl shadow-gray-900/5 ring-1 ring-gray-900/5 p-6">
+          <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Senha</label>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Senha</label>
               <div className="relative">
                 <input required type={showPwd ? "text" : "password"} value={pwd}
                   onChange={e => setPwd(e.target.value)} autoFocus
-                  placeholder="Digite a senha de admin"
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 pr-11 text-base focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                  placeholder="Senha de admin"
+                  className="w-full bg-gray-50 border border-transparent rounded-xl px-4 py-3.5 pr-12 text-base focus:outline-none focus:bg-white focus:border-amber-300 focus:ring-4 focus:ring-amber-100 transition-all" />
                 <button type="button" onClick={() => setShowPwd(s => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400">
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 active:text-gray-600">
                   {showPwd ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
               </div>
             </div>
             <button disabled={busy}
-              className="w-full bg-amber-500 active:bg-amber-600 disabled:opacity-50 text-white font-semibold rounded-xl px-4 py-3 text-base">
-              {busy ? "Entrando..." : "Entrar como admin"}
+              className="w-full mt-2 bg-gradient-to-br from-amber-500 to-orange-500 active:scale-[0.98] disabled:opacity-50 text-white font-semibold rounded-xl px-4 py-3.5 text-base flex items-center justify-center gap-2 shadow-lg shadow-amber-500/30 transition-transform">
+              {busy ? <Spinner size={18} className="text-white" /> : (
+                <>Entrar como admin <ArrowRight size={16} /></>
+              )}
             </button>
           </form>
         </div>
 
-        <div className="text-center mt-4">
-          <Link href="/login" className="inline-flex items-center gap-1 text-[11px] text-gray-400 active:text-gray-600">
-            <ChevronLeft size={12} /> Voltar pro login normal
+        <div className="text-center mt-5">
+          <Link href="/login"
+            className="inline-flex items-center gap-1 text-xs text-gray-500 active:text-gray-800 font-medium">
+            <ChevronLeft size={12} /> Voltar pro login
           </Link>
         </div>
       </div>

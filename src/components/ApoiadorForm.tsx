@@ -98,19 +98,24 @@ export function ApoiadorForm({ target, liderSlug, coordSlug }: Props) {
     setDone(false);
   }
 
-  const inp = "w-full px-4 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-brand-600 focus:border-brand-600 transition-colors";
-  const inpErr = "w-full px-4 py-3 border border-red-400 ring-1 ring-red-200 rounded-xl text-base focus:outline-none";
+  const inp = "w-full px-4 py-3.5 bg-gray-50 border border-transparent rounded-xl text-base focus:outline-none focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 transition-all";
+  const inpErr = "w-full px-4 py-3.5 bg-red-50 border border-red-300 rounded-xl text-base focus:outline-none focus:ring-4 focus:ring-red-100";
 
   if (done) {
     return (
-      <div className="min-h-screen flex items-center justify-center md:p-4 bg-gradient-to-br from-brand-50 to-white">
-        <div className="max-w-md w-full bg-white md:rounded-2xl md:shadow-xl p-8 text-center">
-          <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center mx-auto mb-5 shadow-lg shadow-emerald-100">
+      <div className="min-h-screen flex items-center justify-center md:p-4 bg-gradient-to-br from-brand-50 via-white to-emerald-50 relative overflow-hidden">
+        <div className="pointer-events-none absolute -top-32 -right-32 w-80 h-80 rounded-full bg-emerald-300 opacity-20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-brand-400 opacity-20 blur-3xl" />
+        <div className="max-w-md w-full bg-white md:rounded-3xl md:shadow-xl p-8 text-center relative animate-scale-in">
+          <div className="w-20 h-20 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-3xl flex items-center justify-center mx-auto mb-5 shadow-xl shadow-emerald-500/30">
             <Check size={36} className="text-white" strokeWidth={3} />
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Cadastro Realizado!</h2>
-          <p className="text-gray-500 text-sm mb-8 max-w-xs mx-auto">Seus dados foram recebidos. Nossa equipe entrará em contato em breve.</p>
-          <button onClick={reset} className="w-full bg-brand-600 active:bg-brand-700 text-white px-6 py-3 rounded-xl font-semibold">
+          <p className="text-gray-500 text-sm mb-8 max-w-xs mx-auto leading-relaxed">
+            Seus dados foram recebidos. Nossa equipe entrará em contato em breve.
+          </p>
+          <button onClick={reset}
+            className="w-full bg-gradient-to-br from-brand-600 to-brand-700 active:scale-[0.98] text-white px-6 py-3.5 rounded-xl font-semibold shadow-lg shadow-brand-600/25 transition-transform">
             Novo Cadastro
           </button>
         </div>
@@ -119,17 +124,19 @@ export function ApoiadorForm({ target, liderSlug, coordSlug }: Props) {
   }
 
   return (
-    <div className="min-h-screen md:p-4 bg-gradient-to-br from-brand-50 to-white flex items-start md:items-center justify-center">
-      <div className="max-w-xl w-full bg-white md:rounded-2xl md:shadow-xl overflow-hidden">
-        <div className="bg-gradient-to-br from-brand-600 to-brand-700 px-6 py-7 text-center relative overflow-hidden">
-          <div className="absolute -top-6 -right-6 w-28 h-28 rounded-full bg-white opacity-10" />
-          <div className="absolute -bottom-10 -left-6 w-36 h-36 rounded-full bg-white opacity-10" />
+    <div className="min-h-screen md:p-4 bg-gradient-to-br from-brand-50 via-white to-blue-50 flex items-start md:items-center justify-center">
+      <div className="max-w-xl w-full bg-white md:rounded-3xl md:shadow-xl md:ring-1 md:ring-gray-900/5 overflow-hidden">
+        <div className="bg-gradient-to-br from-brand-600 to-brand-700 px-6 py-8 text-center relative overflow-hidden">
+          <div className="absolute -top-6 -right-6 w-32 h-32 rounded-full bg-white opacity-10" />
+          <div className="absolute -bottom-10 -left-6 w-40 h-40 rounded-full bg-white opacity-10" />
           <div className="relative">
-            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-3">
-              <FileText size={22} className="text-white" />
+            <div className="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center mx-auto mb-4 ring-1 ring-white/30">
+              <FileText size={24} className="text-white" />
             </div>
-            <h1 className="text-2xl font-bold text-white">Formulário de Cadastro</h1>
-            <p className="text-brand-100 mt-1 text-sm">Convidado por <span className="font-semibold text-white">{target.name}</span></p>
+            <h1 className="text-2xl font-bold text-white tracking-tight">Cadastro de Apoiador</h1>
+            <p className="text-brand-100 mt-1.5 text-sm">
+              Convidado por <span className="font-semibold text-white">{target.name}</span>
+            </p>
           </div>
         </div>
 
@@ -237,7 +244,7 @@ export function ApoiadorForm({ target, liderSlug, coordSlug }: Props) {
           </div>
 
           <button disabled={busy}
-            className="w-full flex items-center justify-center bg-brand-600 active:bg-brand-700 text-white font-semibold rounded-xl py-3 text-base disabled:opacity-60">
+            className="w-full flex items-center justify-center gap-2 bg-gradient-to-br from-brand-600 to-brand-700 active:scale-[0.98] text-white font-semibold rounded-xl py-3.5 text-base disabled:opacity-60 shadow-lg shadow-brand-600/25 transition-transform">
             {busy ? "Enviando..." : "Enviar Cadastro"}
           </button>
         </form>

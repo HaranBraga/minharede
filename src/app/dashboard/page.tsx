@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { LogOut, Network, Settings, KeyRound, UserCog, X } from "lucide-react";
+import { LogOut, Settings, KeyRound, UserCog, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { NetworkExplorer, type ExplorerSession } from "@/components/NetworkExplorer";
 import { ChangePasswordSheet } from "@/components/ChangePasswordSheet";
 import { ContactEditForm } from "@/components/ContactEditForm";
+import { FullScreenLoader } from "@/components/Spinner";
 
 interface MemberSession {
   type: "member";
@@ -36,28 +36,34 @@ export default function DashboardPage() {
     router.replace("/login");
   }
 
-  if (!session) return <div className="min-h-screen flex items-center justify-center text-sm text-gray-400">Carregando...</div>;
+  if (!session) return <FullScreenLoader />;
+
+  const initial = session.name[0]?.toUpperCase() ?? "?";
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-2">
-          <Link href="/dashboard" className="w-9 h-9 bg-brand-600 rounded-xl flex items-center justify-center text-white shrink-0">
-            <Network size={16} />
-          </Link>
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200/60">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 shadow-sm"
+            style={{
+              backgroundColor: session.roleBgColor ?? "#e0e7ff",
+              color:           session.roleColor ?? "#4f46e5",
+            }}>
+            {initial}
+          </div>
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-gray-900 text-sm">Minha Rede</p>
+            <p className="font-bold text-gray-900 text-sm truncate">{session.name}</p>
             <p className="text-[11px] text-gray-500 truncate">{session.roleLabel}</p>
           </div>
           <button onClick={() => setShowMenu(true)}
-            className="p-2 text-gray-600 border border-gray-200 rounded-lg active:bg-gray-50"
+            className="p-2.5 text-gray-600 bg-gray-100 active:bg-gray-200 rounded-xl transition-colors"
             title="Menu">
-            <Settings size={14} />
+            <Settings size={16} />
           </button>
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-4">
+      <main className="max-w-3xl mx-auto px-4 py-5">
         <NetworkExplorer session={{
           isAdmin: false,
           contactId: session.contactId,
@@ -72,46 +78,47 @@ export default function DashboardPage() {
 
       {showMenu && (
         <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center md:p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowMenu(false)} />
-          <div className="relative bg-white w-full md:max-w-sm rounded-t-2xl md:rounded-2xl shadow-2xl sheet-anim">
-            <div className="md:hidden flex justify-center pt-3 pb-2">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={() => setShowMenu(false)} />
+          <div className="relative bg-white w-full md:max-w-sm rounded-t-3xl md:rounded-3xl shadow-2xl sheet-anim overflow-hidden">
+            <div className="md:hidden flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 bg-gray-200 rounded-full" />
             </div>
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <p className="font-bold text-gray-900">Configurações</p>
-              <button onClick={() => setShowMenu(false)} className="text-gray-400"><X size={18} /></button>
+            <div className="px-6 py-5 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-base font-bold shrink-0"
+                  style={{
+                    backgroundColor: session.roleBgColor ?? "#e0e7ff",
+                    color:           session.roleColor ?? "#4f46e5",
+                  }}>
+                  {initial}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-gray-900 truncate">{session.name}</p>
+                  <p className="text-[11px] text-gray-500">{session.roleLabel}</p>
+                </div>
+                <button onClick={() => setShowMenu(false)} className="text-gray-400 active:text-gray-600 p-1">
+                  <X size={20} />
+                </button>
+              </div>
             </div>
-            <div className="p-3 space-y-1.5">
-              <button onClick={() => { setShowMenu(false); setShowProfile(true); }}
-                className="w-full flex items-center gap-3 p-3 rounded-xl text-left active:bg-gray-50">
-                <div className="w-9 h-9 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
-                  <UserCog size={16} />
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-gray-900 text-sm">Meu cadastro</p>
-                  <p className="text-[11px] text-gray-500">Complete ou atualize seus dados pessoais</p>
-                </div>
-              </button>
-              <button onClick={() => { setShowMenu(false); setShowPwd(true); }}
-                className="w-full flex items-center gap-3 p-3 rounded-xl text-left active:bg-gray-50">
-                <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                  <KeyRound size={16} />
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-gray-900 text-sm">Trocar senha</p>
-                  <p className="text-[11px] text-gray-500">Altere sua senha de acesso</p>
-                </div>
-              </button>
-              <button onClick={logout}
-                className="w-full flex items-center gap-3 p-3 rounded-xl text-left active:bg-red-50">
-                <div className="w-9 h-9 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-                  <LogOut size={16} />
-                </div>
-                <div className="flex-1">
-                  <p className="font-semibold text-red-600 text-sm">Sair</p>
-                  <p className="text-[11px] text-gray-500">Encerrar sessão</p>
-                </div>
-              </button>
+
+            <div className="p-3">
+              <MenuButton
+                icon={UserCog} iconBg="bg-brand-50" iconColor="text-brand-600"
+                title="Meu cadastro"
+                desc="Complete ou atualize seus dados pessoais"
+                onClick={() => { setShowMenu(false); setShowProfile(true); }} />
+              <MenuButton
+                icon={KeyRound} iconBg="bg-blue-50" iconColor="text-blue-600"
+                title="Trocar senha"
+                desc="Altere sua senha de acesso"
+                onClick={() => { setShowMenu(false); setShowPwd(true); }} />
+              <div className="border-t border-gray-100 my-2" />
+              <MenuButton
+                icon={LogOut} iconBg="bg-red-50" iconColor="text-red-600"
+                title="Sair" titleColor="text-red-600"
+                desc="Encerrar sessão"
+                onClick={logout} />
             </div>
           </div>
         </div>
@@ -125,5 +132,20 @@ export default function DashboardPage() {
           onSaved={() => setShowProfile(false)} />
       )}
     </div>
+  );
+}
+
+function MenuButton({ icon: Icon, iconBg, iconColor, title, titleColor = "text-gray-900", desc, onClick }: any) {
+  return (
+    <button onClick={onClick}
+      className="w-full flex items-center gap-3 p-3 rounded-2xl text-left active:bg-gray-50 transition-colors">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}>
+        <Icon size={17} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`font-semibold text-sm ${titleColor}`}>{title}</p>
+        <p className="text-[11px] text-gray-500 truncate">{desc}</p>
+      </div>
+    </button>
   );
 }

@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import { BottomSheet } from "./BottomSheet";
 import { ContactEditForm } from "./ContactEditForm";
 import { PersonFormFields, personFormToPayload, initialPersonForm, type PersonFormState } from "./PersonFormFields";
+import { CenteredLoader } from "./Spinner";
 
 interface Role { id: string; key: string; label: string; color: string; bgColor: string; level: number; }
 interface Contact {
@@ -307,7 +308,7 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
           )}
 
           {loading ? (
-            <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
+            <CenteredLoader />
           ) : categoryItems.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-12">Nada encontrado.</p>
           ) : (
@@ -331,7 +332,7 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
           </div>
 
           {loading ? (
-            <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
+            <CenteredLoader />
           ) : allChildren.length === 0 ? (
             <EmptyState
               availableLevels={availableLevels}

@@ -11,6 +11,7 @@ import toast from "react-hot-toast";
 import { NetworkExplorer } from "@/components/NetworkExplorer";
 import { BottomSheet } from "@/components/BottomSheet";
 import { PersonFormFields, personFormToPayload, initialPersonForm, type PersonFormState } from "@/components/PersonFormFields";
+import { CenteredLoader, Spinner } from "@/components/Spinner";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -23,29 +24,29 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-30 bg-white border-b border-gray-200">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200/60">
         <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-          <div className="w-9 h-9 bg-amber-500 rounded-xl flex items-center justify-center text-white shrink-0">
-            <ShieldCheck size={16} />
+          <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center text-white shrink-0 shadow-sm shadow-amber-500/30">
+            <ShieldCheck size={17} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-gray-900 text-sm">Minha Rede — Admin</p>
-            <p className="text-[11px] text-gray-500">Painel administrativo</p>
+            <p className="font-bold text-gray-900 text-sm">Painel Admin</p>
+            <p className="text-[11px] text-gray-500">Minha Rede</p>
           </div>
           <button onClick={logout}
-            className="text-xs font-medium text-gray-600 border border-gray-200 px-2.5 py-2 rounded-lg flex items-center gap-1.5 active:bg-gray-50">
+            className="text-xs font-medium text-gray-600 bg-gray-100 active:bg-gray-200 px-3 py-2 rounded-xl flex items-center gap-1.5 transition-colors">
             <LogOut size={12} /> Sair
           </button>
         </div>
 
-        <div className="max-w-3xl mx-auto px-2 flex">
+        <div className="max-w-3xl mx-auto px-3 flex gap-1">
           <TabButton active={tab === "rede"}  onClick={() => setTab("rede")}  icon={Network}  label="Rede" />
           <TabButton active={tab === "users"} onClick={() => setTab("users")} icon={KeyRound} label="Logins" />
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-4">
+      <main className="max-w-3xl mx-auto px-4 py-5">
         {tab === "rede"  && (
           <NetworkExplorer session={{
             isAdmin: true,
@@ -64,8 +65,9 @@ export default function AdminPage() {
 function TabButton({ active, onClick, icon: Icon, label }: any) {
   return (
     <button onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 py-3 px-2 text-sm font-semibold border-b-2 transition-colors ${
-        active ? "text-brand-700 border-brand-600" : "text-gray-500 border-transparent active:text-gray-700"
+      className={`flex-1 flex items-center justify-center gap-1.5 py-3 px-3 text-sm font-semibold rounded-t-xl border-b-2 transition-colors ${
+        active ? "text-brand-700 border-brand-600 bg-brand-50/50"
+               : "text-gray-500 border-transparent active:bg-gray-50"
       }`}>
       <Icon size={14} /> {label}
     </button>
@@ -124,33 +126,35 @@ function UsersTab() {
   });
 
   return (
-    <div className="space-y-3 pb-20 relative">
+    <div className="space-y-4 pb-20 relative">
       <button onClick={() => { setEditing(null); setShowForm(true); }}
-        className="w-full flex items-center justify-center gap-2 bg-brand-600 active:bg-brand-700 text-white font-semibold rounded-xl py-3 text-sm">
-        <Plus size={15} /> Novo login
+        className="w-full flex items-center justify-center gap-2 bg-gradient-to-br from-brand-600 to-brand-700 active:scale-[0.98] text-white font-semibold rounded-2xl py-3.5 text-sm shadow-lg shadow-brand-600/25 transition-transform">
+        <Plus size={16} /> Novo login
       </button>
 
       <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Buscar por nome ou usuário..."
-          className="w-full pl-9 pr-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-600" />
+          className="w-full pl-10 pr-3 py-3 text-sm bg-white border border-gray-200 rounded-2xl focus:outline-none focus:border-brand-300 focus:ring-4 focus:ring-brand-100 transition-all" />
       </div>
 
       {loading ? (
-        <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
+        <CenteredLoader />
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-dashed border-gray-300 px-6 py-12 text-center">
-          <KeyRound size={28} className="text-gray-300 mx-auto mb-3" />
-          <p className="text-sm font-semibold text-gray-700">Nenhum login criado</p>
+        <div className="bg-white rounded-3xl border border-dashed border-gray-300 px-6 py-14 text-center">
+          <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+            <KeyRound size={22} className="text-gray-400" />
+          </div>
+          <p className="text-sm font-semibold text-gray-800">Nenhum login criado</p>
           <p className="text-xs text-gray-500 mt-1">Toque em &quot;Novo login&quot; pra criar credenciais.</p>
         </div>
       ) : (
         <div className="space-y-2">
           {filtered.map(u => (
-            <div key={u.id} className="bg-white rounded-2xl border border-gray-200 p-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
+            <div key={u.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+              <div className="flex items-center gap-3 px-4 py-3.5">
+                <div className="w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0"
                   style={{ backgroundColor: u.contact.role.bgColor, color: u.contact.role.color }}>
                   {u.contact.name[0]?.toUpperCase()}
                 </div>
@@ -161,11 +165,17 @@ function UsersTab() {
                       style={{ color: u.contact.role.color, backgroundColor: u.contact.role.bgColor }}>
                       {u.contact.role.label}
                     </span>
-                    {!u.active && <span className="text-[9px] uppercase font-bold bg-gray-100 text-gray-500 px-1.5 py-px rounded-full">inativo</span>}
+                    {!u.active && (
+                      <span className="text-[9px] uppercase font-bold bg-gray-100 text-gray-500 px-1.5 py-px rounded-full">
+                        inativo
+                      </span>
+                    )}
                   </div>
                   <div className="text-[11px] text-gray-500 mt-0.5">
-                    <span className="font-mono">@{u.username}</span>
-                    {u.contact.parent && <span> · sob <span className="text-gray-700">{u.contact.parent.name}</span></span>}
+                    <span className="font-mono text-brand-700">@{u.username}</span>
+                    {u.contact.parent && (
+                      <span> · sob <span className="text-gray-700 font-medium">{u.contact.parent.name}</span></span>
+                    )}
                   </div>
                   {u.lastLogin && (
                     <p className="text-[10px] text-gray-400 mt-0.5">
@@ -174,22 +184,22 @@ function UsersTab() {
                   )}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-1.5 mt-2.5 ml-13">
+              <div className="grid grid-cols-4 border-t border-gray-100 divide-x divide-gray-100">
                 <button onClick={() => setPwdTarget(u)}
-                  className="text-[11px] font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 active:bg-blue-100">
-                  <KeyRound size={10} className="inline mr-1" />trocar senha
+                  className="py-2.5 text-[11px] font-medium text-blue-600 active:bg-blue-50 flex items-center justify-center gap-1">
+                  <KeyRound size={11} /> Senha
                 </button>
                 <button onClick={() => { setEditing(u); setShowForm(true); }}
-                  className="text-[11px] font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 active:bg-gray-100">
-                  <Edit2 size={10} className="inline mr-1" />editar
+                  className="py-2.5 text-[11px] font-medium text-gray-600 active:bg-gray-50 flex items-center justify-center gap-1">
+                  <Edit2 size={11} /> Editar
                 </button>
                 <button onClick={() => toggleActive(u)}
-                  className="text-[11px] font-medium text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 active:bg-gray-100">
-                  <Power size={10} className="inline mr-1" />{u.active ? "desativar" : "ativar"}
+                  className="py-2.5 text-[11px] font-medium text-gray-600 active:bg-gray-50 flex items-center justify-center gap-1">
+                  <Power size={11} /> {u.active ? "Off" : "On"}
                 </button>
                 <button onClick={() => del(u)}
-                  className="text-[11px] font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1 active:bg-red-100">
-                  <Trash2 size={10} className="inline mr-1" />remover login
+                  className="py-2.5 text-[11px] font-medium text-red-500 active:bg-red-50 flex items-center justify-center gap-1">
+                  <Trash2 size={11} /> Remover
                 </button>
               </div>
             </div>

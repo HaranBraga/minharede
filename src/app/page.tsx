@@ -2,10 +2,11 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ApoiadorForm } from "@/components/ApoiadorForm";
+import { FullScreenLoader } from "@/components/Spinner";
 
 export default function Page() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-gray-400">Carregando...</div>}>
+    <Suspense fallback={<FullScreenLoader />}>
       <Home />
     </Suspense>
   );
@@ -73,7 +74,7 @@ function Home() {
   }, [lider, coord, coordForm, router]);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-sm text-gray-400">Carregando...</div>;
+    return <FullScreenLoader />;
   }
   if (errorMsg) {
     return (
