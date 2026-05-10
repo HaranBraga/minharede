@@ -53,6 +53,14 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
   );
   const currentId: string | null = path[path.length - 1] ?? null;
 
+  // Categoria selecionada dentro do nó atual (drill em "Coordenadores",
+  // "Líderes" ou "Apoiadores" diretos do nó). null = mostra os cards de
+  // categoria; número = mostra a lista daquele cargo.
+  const [category, setCategory] = useState<number | null>(null);
+
+  // Reseta categoria ao navegar pra outro nó
+  useEffect(() => { setCategory(null); }, [currentId]);
+
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -86,28 +94,34 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
     return { id: currentId, name: "?", slug: null, role: null, level: 99 };
   }, [currentId, session, contactById]);
 
-  // Filhos diretos do nó atual (currentId === null → top-level)
-  const children = useMemo(() => {
-    let list = contacts.filter(c => c.parentId === currentId);
-    const q = search.trim().toLowerCase();
-    if (q) list = list.filter(c => c.name.toLowerCase().includes(q));
-    return list.sort((a, b) => {
-      if (a.role.level !== b.role.level) return a.role.level - b.role.level;
-      return a.name.localeCompare(b.name);
-    });
-  }, [contacts, currentId, search]);
+  // Todos os filhos diretos (sem filtro de busca)
+  const allChildren = useMemo(() => {
+    return contacts.filter(c => c.parentId === currentId)
+      .sort((a, b) => {
+        if (a.role.level !== b.role.level) return a.role.level - b.role.level;
+        return a.name.localeCompare(b.name);
+      });
+  }, [contacts, currentId]);
 
-  // Agrupa por cargo pra ficar mais legível quando o nó tem mistura
-  // (ex: Coord Grupo com Coords + Líderes + Apoiadores diretos).
-  const groupedChildren = useMemo(() => {
-    const map = new Map<number, { level: number; role: Role | null; items: Contact[] }>();
-    for (const c of children) {
+  // Categorias presentes (cargos que têm pelo menos 1 filho direto)
+  const categories = useMemo(() => {
+    const map = new Map<number, { level: number; role: Role; items: Contact[] }>();
+    for (const c of allChildren) {
       const g = map.get(c.role.level);
       if (g) g.items.push(c);
       else map.set(c.role.level, { level: c.role.level, role: c.role, items: [c] });
     }
     return Array.from(map.values()).sort((a, b) => a.level - b.level);
-  }, [children]);
+  }, [allChildren]);
+
+  // Quando uma categoria está selecionada, lista filtrada pelo search
+  const categoryItems = useMemo(() => {
+    if (category === null) return [];
+    let list = allChildren.filter(c => c.role.level === category);
+    const q = search.trim().toLowerCase();
+    if (q) list = list.filter(c => c.name.toLowerCase().includes(q));
+    return list;
+  }, [allChildren, category, search]);
 
   // Total descendentes recursivo
   const descendantCount = useMemo(() => {
@@ -269,65 +283,77 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
         })()}
       </section>
 
-      {/* Busca + título */}
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-gray-700">
-          {currentId === null ? "Top da rede" : `Rede de ${currentContact.name}`}
-        </h2>
-        <span className="text-xs text-gray-400">
-          {children.length} {children.length === 1 ? "pessoa" : "pessoas"}
-        </span>
-      </div>
+      {/* === MODO CATEGORIA: lista filtrada por cargo === */}
+      {category !== null ? (
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <button onClick={() => setCategory(null)}
+              className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 active:text-brand-700">
+              <ChevronRight size={14} className="rotate-180" />
+              {LEVEL_LABEL_PL[category]}
+            </button>
+            <span className="text-xs text-gray-400">
+              {categoryItems.length} {categoryItems.length === 1 ? "pessoa" : "pessoas"}
+            </span>
+          </div>
 
-      {contacts.filter(c => c.parentId === currentId).length > 0 && (
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar..."
-            className="w-full pl-9 pr-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-600" />
-        </div>
-      )}
-
-      {loading ? (
-        <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
-      ) : children.length === 0 ? (
-        <EmptyState
-          availableLevels={availableLevels}
-          canCreate={canCreateHere}
-          onCreate={() => setShowCreate(true)} />
-      ) : (
-        <div className="space-y-5">
-          {groupedChildren.map(group => (
-            <div key={group.level} className="space-y-2">
-              <div className="flex items-center gap-2 px-1">
-                {group.role && (
-                  <span className="w-5 h-5 rounded-full"
-                    style={{ backgroundColor: group.role.bgColor }} />
-                )}
-                <h3 className="text-xs font-bold uppercase tracking-wide"
-                  style={{ color: group.role?.color ?? "#6b7280" }}>
-                  {LEVEL_LABEL_PL[group.level] ?? group.role?.label ?? ""}
-                </h3>
-                <span className="text-[11px] text-gray-400 font-medium">
-                  {group.items.length}
-                </span>
-              </div>
-              <div className="space-y-2">
-                {group.items.map(c => (
-                  <ChildRow key={c.id} contact={c}
-                    onOpen={() => navigateTo(c.id)}
-                    onEdit={() => setEditingId(c.id)}
-                    onDelete={() => deleteContact(c)} />
-                ))}
-              </div>
+          {allChildren.filter(c => c.role.level === category).length > 5 && (
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)}
+                placeholder={`Buscar em ${LEVEL_LABEL_PL[category]?.toLowerCase()}...`}
+                className="w-full pl-9 pr-3 py-2.5 text-sm bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-600" />
             </div>
-          ))}
-        </div>
+          )}
+
+          {loading ? (
+            <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
+          ) : categoryItems.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-12">Nada encontrado.</p>
+          ) : (
+            <div className="space-y-2">
+              {categoryItems.map(c => (
+                <ChildRow key={c.id} contact={c}
+                  onOpen={() => navigateTo(c.id)}
+                  onEdit={() => setEditingId(c.id)}
+                  onDelete={() => deleteContact(c)} />
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        /* === MODO RAIZ: cards de categoria + ações === */
+        <>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-gray-700">
+              {currentId === null ? "Top da rede" : `Rede de ${currentContact.name}`}
+            </h2>
+          </div>
+
+          {loading ? (
+            <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
+          ) : allChildren.length === 0 ? (
+            <EmptyState
+              availableLevels={availableLevels}
+              canCreate={canCreateHere}
+              onCreate={() => setShowCreate(true)} />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {categories.map(cat => (
+                <CategoryCard key={cat.level}
+                  level={cat.level}
+                  role={cat.role}
+                  count={cat.items.length}
+                  onClick={() => setCategory(cat.level)} />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {canCreateHere && children.length > 0 && (
+      {canCreateHere && allChildren.length > 0 && (
         <button onClick={() => setShowCreate(true)}
-          className="fixed bottom-6 right-6 w-14 h-14 bg-brand-600 active:bg-brand-700 text-white rounded-full shadow-xl flex items-center justify-center z-30">
+          className="fixed bottom-6 right-6 w-14 h-14 bg-brand-600 active:bg-brand-700 text-white rounded-full shadow-xl flex items-center justify-center z-30 transition-transform active:scale-95">
           <Plus size={24} />
         </button>
       )}
@@ -348,6 +374,35 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
           onSaved={() => { setEditingId(null); load(); }} />
       )}
     </div>
+  );
+}
+
+function CategoryCard({ level, role, count, onClick }: {
+  level: number;
+  role: Role;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button onClick={onClick}
+      className="bg-white border border-gray-200 rounded-2xl p-4 text-left active:scale-[0.98] active:bg-gray-50 transition-transform overflow-hidden relative">
+      <div className="absolute top-0 right-0 w-24 h-24 rounded-full opacity-10 -translate-y-8 translate-x-8"
+        style={{ backgroundColor: role.color }} />
+      <div className="relative">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+          style={{ backgroundColor: role.bgColor, color: role.color }}>
+          <Users size={18} />
+        </div>
+        <p className="text-3xl font-bold text-gray-900 leading-none">{count}</p>
+        <p className="text-[11px] uppercase tracking-wide font-semibold mt-1.5"
+          style={{ color: role.color }}>
+          {LEVEL_LABEL_PL[level] ?? role.label}
+        </p>
+        <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
+          Ver lista <ChevronRight size={10} />
+        </p>
+      </div>
+    </button>
   );
 }
 
