@@ -56,6 +56,7 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
 
 function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -103,6 +104,14 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Carrega todos os cargos pra exibir cards mesmo quando vazios (ex: coord-grupo
+  // que ainda não tem ninguém na rede)
+  useEffect(() => {
+    fetch("/api/roles").then(r => r.json()).then((data: Role[]) => {
+      if (Array.isArray(data)) setAllRoles(data);
+    }).catch(() => {});
+  }, []);
 
   const contactById = useMemo(() => {
     const m = new Map<string, Contact>();
@@ -178,7 +187,9 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
     return out;
   }, [childrenByParent, currentId]);
 
-  // Categorias por cargo, com TOTAL recursivo (rede toda abaixo do nó)
+  // Categorias por cargo, com TOTAL recursivo (rede toda abaixo do nó).
+  // Na view admin (raiz), garante que todos os 4 cargos apareçam mesmo
+  // zerados — assim o card "Coordenadores de Grupo" sempre é visível.
   const categories = useMemo(() => {
     const map = new Map<number, { level: number; role: Role; total: number }>();
     for (const c of allDescendants) {
@@ -186,8 +197,15 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
       if (g) g.total++;
       else map.set(c.role.level, { level: c.role.level, role: c.role, total: 1 });
     }
+    if (currentId === null && allRoles.length > 0) {
+      for (const r of allRoles) {
+        if (!map.has(r.level)) {
+          map.set(r.level, { level: r.level, role: r, total: 0 });
+        }
+      }
+    }
     return Array.from(map.values()).sort((a, b) => a.level - b.level);
-  }, [allDescendants]);
+  }, [allDescendants, currentId, allRoles]);
 
   // Quando uma categoria está selecionada, lista descendentes (ou só
   // filhos diretos, quando categoryDirectOnly) daquele cargo
