@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
   if (phoneTaken) return NextResponse.json({ error: `Telefone já cadastrado: ${phoneTaken.name}` }, { status: 409 });
 
   const coordRole = await getCoordRoleId();
-  const trimmed = String(name).trim();
+  const trimmed = String(name).trim().toUpperCase();
 
   const nameDup = await prisma.contact.findFirst({
     where: { roleId: coordRole, name: { equals: trimmed, mode: "insensitive" } },

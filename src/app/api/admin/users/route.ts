@@ -139,13 +139,14 @@ export async function POST(req: NextRequest) {
     resolvedParentId = p?.id ?? null;
   }
 
-  const slug = await uniqueSlug(String(name).trim());
+  const nameUpper = String(name).trim().toUpperCase();
+  const slug = await uniqueSlug(nameUpper);
   const personal = buildPersonalFields(body);
 
   const result = await prisma.$transaction(async (tx) => {
     const contact = await tx.contact.create({
       data: {
-        name: String(name).trim(),
+        name: nameUpper,
         phone: phoneClean,
         publicSlug: slug,
         roleId: role.id,

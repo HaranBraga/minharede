@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
   const liderRole = await getLiderRoleId();
   const coordRole = await getCoordRoleId();
-  const trimmed = String(name).trim();
+  const trimmed = String(name).trim().toUpperCase();
 
   // Resolve parent
   let parentId: string | null = null;

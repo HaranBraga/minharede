@@ -21,7 +21,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const { name, coordinator: coordName } = await req.json().catch(() => ({}));
   if (!name?.trim()) return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
 
-  const trimmed = String(name).trim();
+  const trimmed = String(name).trim().toUpperCase();
   const newSlug = await uniqueSlug(trimmed, params.id);
 
   let dataExtra: any = {};

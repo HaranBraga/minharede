@@ -96,56 +96,70 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
     return { id: currentId, name: "?", slug: null, role: null, level: 99 };
   }, [currentId, session, contactById]);
 
-  // Todos os filhos diretos (sem filtro de busca)
+  // Map parentId → children pra facilitar BFS
+  const childrenByParent = useMemo(() => {
+    const m = new Map<string | null, Contact[]>();
+    for (const c of contacts) {
+      const k = c.parentId;
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(c);
+    }
+    return m;
+  }, [contacts]);
+
+  // Filhos diretos do nó atual (ordenados por cargo, depois nome)
   const allChildren = useMemo(() => {
-    return contacts.filter(c => c.parentId === currentId)
+    return [...(childrenByParent.get(currentId) ?? [])]
       .sort((a, b) => {
         if (a.role.level !== b.role.level) return a.role.level - b.role.level;
         return a.name.localeCompare(b.name);
       });
-  }, [contacts, currentId]);
+  }, [childrenByParent, currentId]);
 
-  // Categorias presentes (cargos que têm pelo menos 1 filho direto)
+  // TODOS os descendentes recursivos do nó atual (não inclui o próprio)
+  const allDescendants = useMemo(() => {
+    const out: Contact[] = [];
+    const visited = new Set<string>();
+    const stack: (string | null)[] = [currentId];
+    while (stack.length) {
+      const id = stack.pop()!;
+      const kids = childrenByParent.get(id) ?? [];
+      for (const k of kids) {
+        if (visited.has(k.id)) continue;
+        visited.add(k.id);
+        out.push(k);
+        stack.push(k.id);
+      }
+    }
+    return out;
+  }, [childrenByParent, currentId]);
+
+  // Categorias por cargo, com TOTAL recursivo (rede toda abaixo do nó)
   const categories = useMemo(() => {
-    const map = new Map<number, { level: number; role: Role; items: Contact[] }>();
-    for (const c of allChildren) {
+    const map = new Map<number, { level: number; role: Role; total: number }>();
+    for (const c of allDescendants) {
       const g = map.get(c.role.level);
-      if (g) g.items.push(c);
-      else map.set(c.role.level, { level: c.role.level, role: c.role, items: [c] });
+      if (g) g.total++;
+      else map.set(c.role.level, { level: c.role.level, role: c.role, total: 1 });
     }
     return Array.from(map.values()).sort((a, b) => a.level - b.level);
-  }, [allChildren]);
+  }, [allDescendants]);
 
-  // Quando uma categoria está selecionada, lista filtrada pelo search
+  // Quando uma categoria está selecionada, lista TODOS recursivos
+  // daquele cargo abaixo do nó atual, filtrados pelo search
   const categoryItems = useMemo(() => {
     if (category === null) return [];
-    let list = allChildren.filter(c => c.role.level === category);
+    let list = allDescendants.filter(c => c.role.level === category);
     const q = search.trim().toLowerCase();
-    if (q) list = list.filter(c => c.name.toLowerCase().includes(q));
-    return list;
-  }, [allChildren, category, search]);
+    if (q) list = list.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.cidade ?? "").toLowerCase().includes(q)
+    );
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [allDescendants, category, search]);
 
-  // Total descendentes recursivo
-  const descendantCount = useMemo(() => {
-    if (currentId === null) return contacts.length;
-    const visited = new Set<string>();
-    let frontier = [currentId];
-    let total = 0;
-    while (frontier.length > 0) {
-      const next: string[] = [];
-      for (const id of frontier) {
-        const kids = contacts.filter(c => c.parentId === id);
-        for (const k of kids) {
-          if (visited.has(k.id)) continue;
-          visited.add(k.id);
-          total++;
-          next.push(k.id);
-        }
-      }
-      frontier = next;
-    }
-    return total;
-  }, [contacts, currentId]);
+  // Total descendentes recursivo (já computado em allDescendants)
+  const descendantCount = allDescendants.length;
 
   // Cargos que o user pode criar abaixo do contato atual
   const availableLevels = useMemo(() => {
@@ -248,9 +262,7 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
             <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 flex items-center gap-1">
               <Users size={10} />Diretos
             </p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">
-              {contacts.filter(c => c.parentId === currentId).length}
-            </p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{allChildren.length}</p>
           </div>
           <div className="bg-gray-50 rounded-xl p-3">
             <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500">
@@ -299,7 +311,7 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
             </span>
           </div>
 
-          {allChildren.filter(c => c.role.level === category).length > 5 && (
+          {allDescendants.filter(c => c.role.level === category).length > 5 && (
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={search} onChange={e => setSearch(e.target.value)}
@@ -334,7 +346,7 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
 
           {loading ? (
             <CenteredLoader />
-          ) : allChildren.length === 0 ? (
+          ) : categories.length === 0 ? (
             <EmptyState
               availableLevels={availableLevels}
               canCreate={canCreateHere}
@@ -345,7 +357,7 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
                 <CategoryCard key={cat.level}
                   level={cat.level}
                   role={cat.role}
-                  count={cat.items.length}
+                  count={cat.total}
                   onClick={() => setCategory(cat.level)} />
               ))}
             </div>
@@ -372,6 +384,7 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
       {editingId && (
         <ContactEditForm
           contactId={editingId}
+          canChangeRole={session.isAdmin || session.roleLevel <= 1}
           onClose={() => setEditingId(null)}
           onSaved={() => { setEditingId(null); load(); }} />
       )}

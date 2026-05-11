@@ -4,18 +4,19 @@ import { useRouter } from "next/navigation";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  ShieldCheck, LogOut, Network, KeyRound,
+  ShieldCheck, LogOut, Network, KeyRound, Users,
   Search, Plus, Edit2, Trash2, Eye, EyeOff, Power, ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { NetworkExplorer } from "@/components/NetworkExplorer";
+import { PessoasFlat } from "@/components/PessoasFlat";
 import { BottomSheet } from "@/components/BottomSheet";
 import { PersonFormFields, personFormToPayload, initialPersonForm, type PersonFormState } from "@/components/PersonFormFields";
 import { CenteredLoader, Spinner } from "@/components/Spinner";
 
 export default function AdminPage() {
   const router = useRouter();
-  const [tab, setTab] = useState<"rede" | "users">("rede");
+  const [tab, setTab] = useState<"rede" | "pessoas" | "users">("rede");
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -41,8 +42,9 @@ export default function AdminPage() {
         </div>
 
         <div className="max-w-3xl mx-auto px-3 flex gap-1">
-          <TabButton active={tab === "rede"}  onClick={() => setTab("rede")}  icon={Network}  label="Rede" />
-          <TabButton active={tab === "users"} onClick={() => setTab("users")} icon={KeyRound} label="Logins" />
+          <TabButton active={tab === "rede"}     onClick={() => setTab("rede")}     icon={Network}  label="Rede" />
+          <TabButton active={tab === "pessoas"}  onClick={() => setTab("pessoas")}  icon={Users}    label="Pessoas" />
+          <TabButton active={tab === "users"}    onClick={() => setTab("users")}    icon={KeyRound} label="Logins" />
         </div>
       </header>
 
@@ -56,7 +58,8 @@ export default function AdminPage() {
             roleLevel: -1,
           }} />
         )}
-        {tab === "users" && <UsersTab />}
+        {tab === "pessoas" && <PessoasFlat canChangeRole />}
+        {tab === "users"   && <UsersTab />}
       </main>
     </div>
   );

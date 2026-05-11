@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { uniqueSlug } from "@/lib/slug";
+import { upperOrNull } from "@/lib/contact-normalize";
 
 /**
  * Helpers compartilhados entre os endpoints /api/leaders e /api/coordinators.
@@ -107,10 +108,10 @@ export function buildPersonalFields(body: any): {
   return {
     email:          body.email?.trim() || null,
     dataNascimento: nascimento,
-    genero:         body.genero?.trim() || null,
-    rua:            body.rua?.trim() || null,
-    bairro:         body.bairro?.trim() || null,
-    cidade:         body.cidade?.trim() || null,
-    zona:           body.zona?.trim() || null,
+    genero:         upperOrNull(body.genero),
+    rua:            upperOrNull(body.rua),
+    bairro:         upperOrNull(body.bairro),
+    cidade:         upperOrNull(body.cidade),
+    zona:           upperOrNull(body.zona),
   };
 }

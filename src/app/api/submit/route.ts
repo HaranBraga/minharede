@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { uniqueSlug } from "@/lib/slug";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import { upperOrNull } from "@/lib/contact-normalize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -90,18 +91,25 @@ export async function POST(req: NextRequest) {
       ? await prisma.contact.findUnique({ where: { phone: phoneWith55 } })
       : null;
 
+    const nameUpper = String(nome).trim().toUpperCase();
+    const generoU = upperOrNull(genero);
+    const ruaU = upperOrNull(rua);
+    const bairroU = upperOrNull(bairro);
+    const cidadeU = upperOrNull(cidade);
+    const zonaU = upperOrNull(zona);
+
     let contactId: string;
     if (existing) {
       const updated = await prisma.contact.update({
         where: { id: existing.id },
         data: {
-          name: String(nome).trim(),
+          name: nameUpper,
           ...(parentId && !existing.parentId && { parentId }),
-          ...(genero  && { genero }),
-          ...(rua     && { rua }),
-          ...(bairro  && { bairro }),
-          ...(cidade  && { cidade }),
-          ...(zona    && { zona }),
+          ...(generoU && { genero: generoU }),
+          ...(ruaU    && { rua: ruaU }),
+          ...(bairroU && { bairro: bairroU }),
+          ...(cidadeU && { cidade: cidadeU }),
+          ...(zonaU   && { zona: zonaU }),
           ...(nascimento && { dataNascimento: nascimento }),
           // Atualiza o consentimento LGPD a cada cadastro (registra reaceite)
           lgpdConsentAt,
@@ -110,20 +118,20 @@ export async function POST(req: NextRequest) {
       });
       contactId = updated.id;
     } else {
-      const slug = await uniqueSlug(String(nome));
+      const slug = await uniqueSlug(nameUpper);
       const created = await prisma.contact.create({
         data: {
-          name: String(nome).trim(),
+          name: nameUpper,
           phone: phoneWith55 || `placeholder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           publicSlug: slug,
           roleId: apoiadorRole.id,
           parentId,
           source: "apoiador-form",
-          genero: genero ?? null,
-          rua: rua ?? null,
-          bairro: bairro ?? null,
-          cidade: cidade ?? null,
-          zona: zona ?? null,
+          genero: generoU,
+          rua: ruaU,
+          bairro: bairroU,
+          cidade: cidadeU,
+          zona: zonaU,
           dataNascimento: nascimento,
           lgpdConsentAt,
           lgpdIpAddress,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, canManageContact } from "@/lib/auth";
+import { upperOrNull } from "@/lib/contact-normalize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,11 +16,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const { name, phone, cidade, bairro, zona, genero, dataNascimento } = body;
 
   const data: any = {};
-  if (name?.trim())     data.name = String(name).trim();
-  if (cidade !== undefined) data.cidade = cidade || null;
-  if (bairro !== undefined) data.bairro = bairro || null;
-  if (zona !== undefined)   data.zona = zona || null;
-  if (genero !== undefined) data.genero = genero || null;
+  if (name?.trim())     data.name = String(name).trim().toUpperCase();
+  if (cidade !== undefined) data.cidade = upperOrNull(cidade);
+  if (bairro !== undefined) data.bairro = upperOrNull(bairro);
+  if (zona !== undefined)   data.zona = upperOrNull(zona);
+  if (genero !== undefined) data.genero = upperOrNull(genero);
   if (dataNascimento !== undefined) {
     data.dataNascimento = dataNascimento ? new Date(dataNascimento) : null;
   }

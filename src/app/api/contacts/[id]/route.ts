@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, canManageContact } from "@/lib/auth";
 import { getCoordRoleId, publicLink, uniqueSlug } from "@/lib/rede";
+import { upperOrNull } from "@/lib/contact-normalize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,8 +34,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (body.name !== undefined) {
     const trimmed = String(body.name).trim();
     if (!trimmed) return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
-    data.name = trimmed;
-    data.publicSlug = await uniqueSlug(trimmed, params.id);
+    data.name = trimmed.toUpperCase();
+    data.publicSlug = await uniqueSlug(data.name, params.id);
   }
   if (body.phone !== undefined) {
     const d = String(body.phone).replace(/\D/g, "");
@@ -50,13 +51,41 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     }
   }
   if (body.email !== undefined) data.email = body.email || null;
-  if (body.cidade !== undefined) data.cidade = body.cidade || null;
-  if (body.bairro !== undefined) data.bairro = body.bairro || null;
-  if (body.rua !== undefined)    data.rua    = body.rua    || null;
-  if (body.zona !== undefined)   data.zona   = body.zona   || null;
-  if (body.genero !== undefined) data.genero = body.genero || null;
+  if (body.cidade !== undefined) data.cidade = upperOrNull(body.cidade);
+  if (body.bairro !== undefined) data.bairro = upperOrNull(body.bairro);
+  if (body.rua !== undefined)    data.rua    = upperOrNull(body.rua);
+  if (body.zona !== undefined)   data.zona   = upperOrNull(body.zona);
+  if (body.genero !== undefined) data.genero = upperOrNull(body.genero);
   if (body.dataNascimento !== undefined) {
     data.dataNascimento = body.dataNascimento ? new Date(body.dataNascimento) : null;
+  }
+
+  // Mudança de cargo: só admin ou coord/coord-grupo (level <= 1)
+  if (body.roleId) {
+    const sessionLevel = s.type === "admin" ? -1 : s.roleLevel;
+    if (sessionLevel > 1) {
+      return NextResponse.json({ error: "Sem permissão pra mudar cargo" }, { status: 403 });
+    }
+    const newRole = await prisma.personRole.findUnique({
+      where: { id: body.roleId },
+      select: { id: true, level: true },
+    });
+    if (!newRole) return NextResponse.json({ error: "Cargo inválido" }, { status: 400 });
+    // Não pode promover acima do próprio nível
+    if (newRole.level < sessionLevel + 1 && s.type !== "admin") {
+      return NextResponse.json({ error: "Não pode promover acima do seu cargo" }, { status: 403 });
+    }
+    data.roleId = newRole.id;
+
+    // Se o cargo mudou pra um nível >= ao do parent atual, limpa o parent
+    // (parent precisa ter nível menor que o contato pra hierarquia bater).
+    const current = await prisma.contact.findUnique({
+      where: { id: params.id },
+      select: { parentId: true, parent: { select: { role: { select: { level: true } } } } },
+    });
+    if (current?.parent && current.parent.role.level >= newRole.level) {
+      data.parentId = null;
+    }
   }
 
   // Apenas admin pode reatribuir parent (coordinator)

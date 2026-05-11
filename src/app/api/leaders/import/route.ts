@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   for (const line of coordLines) {
     const parts = parseCsvLine(line);
     if (parts.length < 1 || !parts[0]) continue;
-    const name = parts[0];
+    const name = parts[0].toUpperCase();
     const found = await prisma.contact.findFirst({
       where: { roleId: coordRole, name: { equals: name, mode: "insensitive" } },
       select: { id: true },
@@ -61,8 +61,8 @@ export async function POST(req: NextRequest) {
   for (const line of leaderLines) {
     const parts = parseCsvLine(line);
     if (parts.length < 1 || !parts[0]) continue;
-    const name = parts[0];
-    const coordName = parts[2] || "";
+    const name = parts[0].toUpperCase();
+    const coordName = (parts[2] || "").toUpperCase();
     const exists = await prisma.contact.findFirst({
       where: { roleId: liderRole, name: { equals: name, mode: "insensitive" } },
       select: { id: true },

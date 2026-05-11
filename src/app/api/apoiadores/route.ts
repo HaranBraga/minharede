@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
 
   const created = await prisma.contact.create({
     data: {
-      name: String(name).trim(),
+      name: String(name).trim().toUpperCase(),
       phone: phoneClean,
       publicSlug: slug,
       roleId,

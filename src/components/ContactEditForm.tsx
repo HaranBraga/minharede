@@ -22,23 +22,28 @@ interface Contact {
   parent?: { id: string; name: string } | null;
 }
 
+interface Role { id: string; key: string; label: string; level: number; color: string; bgColor: string; }
+
 /**
  * Modal mobile-first de edição COMPLETA do contato. Aceita todos os campos
  * relevantes (identificação + endereço + dados pessoais).
  */
-export function ContactEditForm({ contactId, onClose, onSaved }: {
+export function ContactEditForm({ contactId, onClose, onSaved, canChangeRole = false }: {
   contactId: string;
   onClose: () => void;
   onSaved: (c: Contact) => void;
+  canChangeRole?: boolean;
 }) {
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [roles, setRoles] = useState<Role[]>([]);
 
   const [form, setForm] = useState({
     name: "", phone: "", email: "",
     rua: "", bairro: "", cidade: "", zona: "Urbana",
     dataNascimento: "", genero: "",
+    roleId: "",
   });
 
   useEffect(() => {
@@ -55,18 +60,26 @@ export function ContactEditForm({ contactId, onClose, onSaved }: {
         zona: c.zona || "Urbana",
         dataNascimento: c.dataNascimento ? new Date(c.dataNascimento).toISOString().slice(0, 10) : "",
         genero: c.genero || "",
+        roleId: c.role?.id ?? "",
       });
       setLoading(false);
     }).catch(() => { toast.error("Erro ao carregar"); setLoading(false); });
   }, [contactId]);
 
+  useEffect(() => {
+    if (!canChangeRole) return;
+    fetch("/api/roles").then(r => r.json()).then(setRoles).catch(() => setRoles([]));
+  }, [canChangeRole]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     try {
+      const payload: any = { ...form };
+      if (!canChangeRole || !payload.roleId || payload.roleId === contact?.role?.id) delete payload.roleId;
       const r = await fetch(`/api/contacts/${contactId}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       if (!r.ok) { const d = await r.json(); toast.error(d.error || "Erro"); return; }
       const updated = await r.json();
@@ -99,6 +112,27 @@ export function ContactEditForm({ contactId, onClose, onSaved }: {
             <input required value={form.name}
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inp} />
           </div>
+          {canChangeRole && roles.length > 0 && (
+            <div>
+              <label className={lbl}>Cargo</label>
+              <select value={form.roleId}
+                onChange={e => setForm(f => ({ ...f, roleId: e.target.value }))}
+                className={inp + " bg-white"}>
+                {roles.map(r => (
+                  <option key={r.id} value={r.id}>{r.label}</option>
+                ))}
+                {/* Mantém o cargo atual disponível se /api/roles não o retornar */}
+                {contact?.role && !roles.find(r => r.id === contact.role!.id) && (
+                  <option value={contact.role.id}>{contact.role.label} (atual)</option>
+                )}
+              </select>
+              {form.roleId !== contact?.role?.id && (
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 mt-1.5">
+                  ⚠ Mudar o cargo pode desvincular o pai. Confira o vínculo depois.
+                </p>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-1 gap-3">
             <div>
               <label className={lbl}>Telefone (11 dígitos) {isApoiad ? "*" : <span className="text-gray-400">opcional</span>}</label>
