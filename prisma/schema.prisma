@@ -34,13 +34,6 @@ enum Direction {
   OUT
 }
 
-enum DispatchStatus {
-  PENDING
-  SENDING
-  DONE
-  FAILED
-}
-
 model Contact {
   id              String     @id @default(cuid())
   name            String
@@ -85,7 +78,6 @@ model Contact {
   profilePhotoUrl String?
 
   conversations Conversation[]
-  groupMembers  GroupMember[]
   demandas           Demanda[]        @relation("ContactDemandas")
   agendaSolicitante  AgendaEvento[]   @relation("AgendaSolicitante")
   agendaAnfitrioes   AgendaAnfitriao[] @relation("ContactAnfitrioes")
@@ -166,37 +158,6 @@ model Message {
   mediaType      String?
   rawData        Json?
   sentAt         DateTime     @default(now())
-}
-
-model ContactGroup {
-  id          String        @id @default(cuid())
-  name        String
-  description String?
-  date        DateTime?
-  members     GroupMember[]
-  dispatches  Dispatch[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-}
-
-model GroupMember {
-  contactId String
-  groupId   String
-  contact   Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  group     ContactGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-
-  @@id([contactId, groupId])
-}
-
-model Dispatch {
-  id        String           @id @default(cuid())
-  groupId   String
-  group     ContactGroup     @relation(fields: [groupId], references: [id])
-  message   String
-  status    DispatchStatus   @default(PENDING)
-  sentAt    DateTime?
-  results   DispatchResult[]
-  createdAt DateTime         @default(now())
 }
 
 model AppConfig {
@@ -443,18 +404,6 @@ model ReuniaoAvaliacao {
   atencao       Int      @default(0)  // 0–5
   interacao     Int      @default(0)  // 0–5
   obs           String?
-}
-
-model DispatchResult {
-  id          String   @id @default(cuid())
-  dispatchId  String
-  dispatch    Dispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
-  contactId   String
-  contactName String
-  phone       String
-  success     Boolean  @default(false)
-  error       String?
-  sentAt      DateTime @default(now())
 }
 
 // ─── Campanhas ─────────────────────────────────────────────────────────────────

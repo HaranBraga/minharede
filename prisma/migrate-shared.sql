@@ -112,3 +112,12 @@ END $$;
 -- Coluna auxiliar em Contact (uso interno).
 ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "endRef" TEXT;
 
+
+
+-- Tabelas Dispatch/ContactGroup/GroupMember/DispatchResult removidas (nunca foram usadas em produção).
+DROP TABLE IF EXISTS "DispatchResult" CASCADE;
+DROP TABLE IF EXISTS "Dispatch"       CASCADE;
+DROP TABLE IF EXISTS "GroupMember"    CASCADE;
+DROP TABLE IF EXISTS "ContactGroup"   CASCADE;
+DROP TYPE  IF EXISTS "DispatchStatus" CASCADE;
+
