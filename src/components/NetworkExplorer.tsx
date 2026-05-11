@@ -471,6 +471,17 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
   );
 }
 
+/** Detecta se uma cor hex é muito clara pra ser usada como texto em fundo branco. */
+function isLightColor(hex: string): boolean {
+  const c = (hex ?? "").replace("#", "");
+  if (c.length !== 6) return false;
+  const r = parseInt(c.slice(0, 2), 16);
+  const g = parseInt(c.slice(2, 4), 16);
+  const b = parseInt(c.slice(4, 6), 16);
+  // Luminância perceptual (ITU-R BT.601)
+  return (r * 299 + g * 587 + b * 114) / 1000 > 200;
+}
+
 function CategoryCard({ level, role, count, onClick, labelOverride }: {
   level: number;
   role: Role;
@@ -478,11 +489,14 @@ function CategoryCard({ level, role, count, onClick, labelOverride }: {
   onClick: () => void;
   labelOverride?: string;
 }) {
+  // Se role.color é muito clara (ex: branco), usa bgColor pro texto do label
+  // garantir contraste no fundo branco do card.
+  const labelColor = isLightColor(role.color) ? role.bgColor : role.color;
   return (
     <button onClick={onClick}
       className="bg-white border border-gray-200 rounded-2xl p-4 text-left active:scale-[0.98] active:bg-gray-50 transition-transform overflow-hidden relative">
       <div className="absolute top-0 right-0 w-24 h-24 rounded-full opacity-10 -translate-y-8 translate-x-8"
-        style={{ backgroundColor: role.color }} />
+        style={{ backgroundColor: labelColor }} />
       <div className="relative">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
           style={{ backgroundColor: role.bgColor, color: role.color }}>
@@ -490,7 +504,7 @@ function CategoryCard({ level, role, count, onClick, labelOverride }: {
         </div>
         <p className="text-3xl font-bold text-gray-900 leading-none">{count.toLocaleString("pt-BR")}</p>
         <p className="text-[11px] uppercase tracking-wide font-semibold mt-1.5"
-          style={{ color: role.color }}>
+          style={{ color: labelColor }}>
           {labelOverride ?? LEVEL_LABEL_PL[level] ?? role.label}
         </p>
         <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
