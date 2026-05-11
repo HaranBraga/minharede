@@ -3,11 +3,12 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { Eye, EyeOff, ShieldCheck, ChevronLeft, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, ChevronLeft, ArrowRight, User } from "lucide-react";
 import { Spinner } from "@/components/Spinner";
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const [username, setUsername] = useState("");
   const [pwd, setPwd] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -25,11 +26,11 @@ export default function AdminLoginPage() {
     try {
       const r = await fetch("/api/auth/admin/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pwd }),
+        body: JSON.stringify({ username: username || undefined, password: pwd }),
       });
       if (!r.ok) {
         const d = await r.json().catch(() => ({}));
-        toast.error(d.error || "Senha incorreta");
+        toast.error(d.error || "Credenciais inválidas");
         return;
       }
       router.replace("/admin");
@@ -53,11 +54,21 @@ export default function AdminLoginPage() {
         <div className="bg-white rounded-3xl shadow-xl shadow-gray-900/5 ring-1 ring-gray-900/5 p-6">
           <form onSubmit={submit} className="space-y-4">
             <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Usuário</label>
+              <div className="relative">
+                <input type="text" value={username} autoCapitalize="none"
+                  onChange={e => setUsername(e.target.value.toLowerCase())} autoFocus
+                  placeholder="Deixe em branco pra usar senha master"
+                  className="w-full bg-gray-50 border border-transparent rounded-xl px-4 py-3.5 pr-12 text-base focus:outline-none focus:bg-white focus:border-amber-300 focus:ring-4 focus:ring-amber-100 transition-all" />
+                <User size={17} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              </div>
+            </div>
+            <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">Senha</label>
               <div className="relative">
                 <input required type={showPwd ? "text" : "password"} value={pwd}
-                  onChange={e => setPwd(e.target.value)} autoFocus
-                  placeholder="Senha de admin"
+                  onChange={e => setPwd(e.target.value)}
+                  placeholder="Senha"
                   className="w-full bg-gray-50 border border-transparent rounded-xl px-4 py-3.5 pr-12 text-base focus:outline-none focus:bg-white focus:border-amber-300 focus:ring-4 focus:ring-amber-100 transition-all" />
                 <button type="button" onClick={() => setShowPwd(s => !s)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 active:text-gray-600">

@@ -10,7 +10,14 @@ export async function GET() {
   if (!s) return NextResponse.json({ session: null });
 
   if (s.type === "admin") {
-    return NextResponse.json({ session: { type: "admin" } });
+    return NextResponse.json({
+      session: {
+        type: "admin",
+        adminUserId: s.adminUserId ?? null,
+        name: s.name ?? "Master",
+        isSuperAdmin: s.isSuperAdmin ?? !s.adminUserId, // master sem ID = super
+      },
+    });
   }
 
   // member: busca dados frescos do contato

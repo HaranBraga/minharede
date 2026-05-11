@@ -86,3 +86,24 @@ DO $$ BEGIN
       ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END $$;
+
+-- Tabela RedeAdminUser (admins individuais do minha-rede).
+CREATE TABLE IF NOT EXISTS "RedeAdminUser" (
+  "id"           TEXT NOT NULL PRIMARY KEY,
+  "username"     TEXT NOT NULL,
+  "password"     TEXT NOT NULL,
+  "name"         TEXT NOT NULL,
+  "isSuperAdmin" BOOLEAN NOT NULL DEFAULT false,
+  "active"       BOOLEAN NOT NULL DEFAULT true,
+  "lastLogin"    TIMESTAMP(3),
+  "createdAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt"    TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'RedeAdminUser_username_key') THEN
+    CREATE UNIQUE INDEX "RedeAdminUser_username_key" ON "RedeAdminUser"("username");
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'RedeAdminUser_username_idx') THEN
+    CREATE INDEX "RedeAdminUser_username_idx" ON "RedeAdminUser"("username");
+  END IF;
+END $$;

@@ -4,19 +4,33 @@ import { useRouter } from "next/navigation";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  ShieldCheck, LogOut, Network, KeyRound, Users,
+  ShieldCheck, LogOut, Network, KeyRound, Users, Crown,
   Search, Plus, Edit2, Trash2, Eye, EyeOff, Power, ChevronRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { NetworkExplorer } from "@/components/NetworkExplorer";
 import { PessoasFlat } from "@/components/PessoasFlat";
+import { AdminUsersTab } from "@/components/AdminUsersTab";
 import { BottomSheet } from "@/components/BottomSheet";
 import { PersonFormFields, personFormToPayload, initialPersonForm, type PersonFormState } from "@/components/PersonFormFields";
 import { CenteredLoader, Spinner } from "@/components/Spinner";
 
 export default function AdminPage() {
   const router = useRouter();
-  const [tab, setTab] = useState<"rede" | "pessoas" | "users">("rede");
+  const [tab, setTab] = useState<"rede" | "pessoas" | "users" | "admins">("rede");
+  const [me, setMe] = useState<{ name: string; isSuperAdmin: boolean; adminUserId: string | null } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me").then(r => r.json()).then(d => {
+      if (d?.session?.type === "admin") {
+        setMe({
+          name: d.session.name ?? "Admin",
+          isSuperAdmin: d.session.isSuperAdmin === true,
+          adminUserId: d.session.adminUserId ?? null,
+        });
+      }
+    }).catch(() => {});
+  }, []);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -33,7 +47,9 @@ export default function AdminPage() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-bold text-gray-900 text-sm">Painel Admin</p>
-            <p className="text-[11px] text-gray-500">Minha Rede</p>
+            <p className="text-[11px] text-gray-500 truncate">
+              {me?.name ? `${me.name}${me.isSuperAdmin ? " · super" : ""}` : "Minha Rede"}
+            </p>
           </div>
           <button onClick={logout}
             className="text-xs font-medium text-gray-600 bg-gray-100 active:bg-gray-200 px-3 py-2 rounded-xl flex items-center gap-1.5 transition-colors">
@@ -41,10 +57,13 @@ export default function AdminPage() {
           </button>
         </div>
 
-        <div className="max-w-3xl mx-auto px-3 flex gap-1">
+        <div className="max-w-3xl mx-auto px-3 flex gap-1 overflow-x-auto">
           <TabButton active={tab === "rede"}     onClick={() => setTab("rede")}     icon={Network}  label="Rede" />
           <TabButton active={tab === "pessoas"}  onClick={() => setTab("pessoas")}  icon={Users}    label="Pessoas" />
           <TabButton active={tab === "users"}    onClick={() => setTab("users")}    icon={KeyRound} label="Logins" />
+          {me?.isSuperAdmin && (
+            <TabButton active={tab === "admins"} onClick={() => setTab("admins")} icon={Crown} label="Admins" />
+          )}
         </div>
       </header>
 
@@ -60,6 +79,7 @@ export default function AdminPage() {
         )}
         {tab === "pessoas" && <PessoasFlat canChangeRole />}
         {tab === "users"   && <UsersTab />}
+        {tab === "admins" && me?.isSuperAdmin && <AdminUsersTab myAdminUserId={me.adminUserId} />}
       </main>
     </div>
   );

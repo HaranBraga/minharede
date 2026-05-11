@@ -22,7 +22,14 @@ function getSecret(): Uint8Array {
  *           antigo). Vê os descendentes do seu Contact.
  */
 export type SessionPayload =
-  | { type: "admin" }
+  | {
+      type: "admin";
+      // adminUserId presente quando logou via RedeAdminUser; ausente quando
+      // logou via ADMIN_PASSWORD master (super-admin implícito).
+      adminUserId?: string;
+      name?: string;
+      isSuperAdmin?: boolean;
+    }
   | { type: "member"; contactId: string; slug: string; name: string; roleLevel: number };
 
 export async function signSession(payload: SessionPayload): Promise<string> {

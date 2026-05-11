@@ -243,6 +243,23 @@ model RedeUser {
   @@index([username])
 }
 
+// Usuários admin do minha-rede. Não se misturam com User (CRM/painel-360)
+// nem com RedeUser (coords/líderes). isSuperAdmin pode gerenciar outros
+// admins; ADMIN_PASSWORD env continua valendo como fallback master.
+model RedeAdminUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  password     String   // bcrypt
+  name         String
+  isSuperAdmin Boolean  @default(false)
+  active       Boolean  @default(true)
+  lastLogin    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([username])
+}
+
 // Log de logins do minha-rede. SEPARADO do AuditLog do CRM (regra:
 // usuários do minha-rede não se misturam com os do CRM/painel-360).
 // Registra cada login via /api/auth/admin/login ou /api/auth/login-by-name.
