@@ -241,7 +241,6 @@ export async function POST(req: NextRequest) {
       const slug = await uniqueSlug(nameTrim);
 
       const customFields: Record<string, any> = {};
-      if (a.end !== undefined && a.end !== null && a.end !== "") customFields.end = String(a.end);
       if (a.ip !== undefined && a.ip !== null && a.ip !== "")    customFields.ip  = String(a.ip);
       if (a.lgpd !== undefined && a.lgpd !== null && a.lgpd !== "") customFields.lgpd = String(a.lgpd);
       if (originalPhone) customFields.originalPhone = originalPhone;
@@ -264,6 +263,7 @@ export async function POST(req: NextRequest) {
           bairro:         str(a.bairro),
           cidade:         str(a.cidade),
           zona:           str(a.zona),
+          endRef:         str(a.end),
           customFields,
         },
       });

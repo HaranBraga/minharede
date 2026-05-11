@@ -67,6 +67,8 @@ model Contact {
   bairro          String?
   cidade          String?
   zona            String?
+  // Campo auxiliar (uso interno).
+  endRef          String?
 
   score           Float?   // média computada automaticamente
   score1          Float?   // avaliador 1

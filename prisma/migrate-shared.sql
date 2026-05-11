@@ -107,3 +107,8 @@ DO $$ BEGIN
     CREATE INDEX "RedeAdminUser_username_idx" ON "RedeAdminUser"("username");
   END IF;
 END $$;
+
+
+-- Coluna auxiliar em Contact (uso interno).
+ALTER TABLE "Contact" ADD COLUMN IF NOT EXISTS "endRef" TEXT;
+
