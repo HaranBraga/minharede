@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Plus, Search, Trash2, Edit2, Phone, MapPin, ChevronRight, Home, Users,
@@ -46,6 +46,15 @@ const LEVEL_LABEL_PL: Record<number, string> = {
 };
 
 export function NetworkExplorer({ session }: { session: ExplorerSession }) {
+  // useSearchParams precisa estar dentro de <Suspense> pro Next 14 prerender.
+  return (
+    <Suspense fallback={<CenteredLoader />}>
+      <NetworkExplorerInner session={session} />
+    </Suspense>
+  );
+}
+
+function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const searchParams = useSearchParams();
@@ -64,7 +73,7 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
   const currentId: string | null = path[path.length - 1] ?? null;
 
   const writePath = useCallback((next: string[]) => {
-    const sp = new URLSearchParams(Array.from(searchParams.entries()));
+    const sp = new URLSearchParams(searchParams.toString());
     if (next.length === 0) sp.delete("p");
     else sp.set("p", next.join(","));
     const qs = sp.toString();
