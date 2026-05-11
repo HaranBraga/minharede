@@ -76,13 +76,23 @@ export async function POST(req: NextRequest) {
     return d.startsWith("55") ? d : `55${d}`;
   }
   function parseDate(v: any): Date | null {
-    if (!v) return null;
-    if (v instanceof Date) return v;
+    if (v === null || v === undefined || v === "") return null;
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
     const s = String(v).trim();
+    if (!s) return null;
     const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (m) return new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00Z`);
+    if (m) {
+      const d = new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00Z`);
+      if (!isNaN(d.getTime())) return d;
+    }
     const d = new Date(s);
     return isNaN(d.getTime()) ? null : d;
+  }
+  /** Coerce qualquer valor pra string trim, ou null se vazio. */
+  function str(v: any): string | null {
+    if (v === null || v === undefined) return null;
+    const s = String(v).trim();
+    return s || null;
   }
 
   const report = {
@@ -247,13 +257,13 @@ export async function POST(req: NextRequest) {
           roleId: apoiadorRoleId,
           parentId,
           source: "import-planilha",
-          email:          a.email?.trim() || null,
+          email:          str(a.email),
           dataNascimento: parseDate(a.dataNascimento),
-          genero:         a.genero?.trim() || null,
-          rua:            a.rua?.trim() || null,
-          bairro:         a.bairro?.trim() || null,
-          cidade:         a.cidade?.trim() || null,
-          zona:           a.zona?.trim() || null,
+          genero:         str(a.genero),
+          rua:            str(a.rua),
+          bairro:         str(a.bairro),
+          cidade:         str(a.cidade),
+          zona:           str(a.zona),
           customFields,
         },
       });
