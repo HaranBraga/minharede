@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import { BottomSheet } from "./BottomSheet";
 import { ContactEditForm } from "./ContactEditForm";
 import { PersonFormFields, personFormToPayload, initialPersonForm, type PersonFormState } from "./PersonFormFields";
+import { displayPhone } from "@/lib/phone-display";
 import { CenteredLoader } from "./Spinner";
 
 interface Role { id: string; key: string; label: string; color: string; bgColor: string; level: number; }
@@ -413,9 +414,7 @@ function ChildRow({ contact, onOpen, onEdit, onDelete }: {
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const phoneStripped = (contact.phone || "").replace(/\D/g, "");
-  const phoneShown = phoneStripped.startsWith("placeholder") ? null
-    : phoneStripped.startsWith("55") ? phoneStripped.slice(2) : phoneStripped;
+  const phoneShown = displayPhone(contact.phone);
   const isApoiad = contact.role.level >= 3;
 
   return (

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { BottomSheet } from "./BottomSheet";
+import { displayPhoneOrEmpty } from "@/lib/phone-display";
 
 const CIDADES_AC = [
   "Acrelândia", "Assis Brasil", "Brasiléia", "Bujari", "Capixaba",
@@ -43,10 +44,7 @@ export function ContactEditForm({ contactId, onClose, onSaved }: {
   useEffect(() => {
     fetch(`/api/contacts/${contactId}`).then(r => r.json()).then((c: Contact) => {
       setContact(c);
-      const phoneStripped = (c.phone || "").replace(/\D/g, "");
-      const phoneShown = phoneStripped.startsWith("55") ? phoneStripped.slice(2) : phoneStripped;
-      // se for placeholder, não mostra
-      const phoneFinal = phoneStripped.startsWith("placeholder") ? "" : phoneShown;
+      const phoneFinal = displayPhoneOrEmpty(c.phone);
       setForm({
         name: c.name || "",
         phone: phoneFinal,
