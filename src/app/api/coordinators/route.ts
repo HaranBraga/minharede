@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
   const s = await getSession();
   if (!s) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const allowed = rolesAllowedToCreate(s);
+  const allowed = await rolesAllowedToCreate(s);
   if (1 < allowed.minLevel) {
     return NextResponse.json({ error: "Você não tem permissão pra criar coordenadores" }, { status: 403 });
   }

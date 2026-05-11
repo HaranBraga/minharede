@@ -47,9 +47,22 @@ export async function canManageContact(s: SessionPayload | null, targetId: strin
   return ids.includes(targetId);
 }
 
-/** Levels que o session pode criar. Admin: todos. Member: só níveis abaixo do dele. */
-export function rolesAllowedToCreate(s: SessionPayload | null): { minLevel: number } {
-  if (!s) return { minLevel: 99 };
-  if (s.type === "admin") return { minLevel: 0 };
-  return { minLevel: s.roleLevel + 1 };
+/**
+ * Levels que o session pode criar. Admin: todos. Member: só níveis abaixo do dele.
+ *
+ * IMPORTANTE: busca o roleLevel ATUAL do banco (não confia no JWT) porque
+ * o cargo pode ter sido alterado por um admin sem o usuário ter renovado a sessão.
+ * Sem isso, um líder promovido a coordenador continuaria sem poder criar líderes
+ * até deslogar e logar de novo.
+ */
+export async function rolesAllowedToCreate(s: SessionPayload | null): Promise<{ minLevel: number; currentLevel: number }> {
+  if (!s) return { minLevel: 99, currentLevel: 99 };
+  if (s.type === "admin") return { minLevel: 0, currentLevel: -1 };
+
+  const fresh = await prisma.contact.findUnique({
+    where: { id: s.contactId },
+    select: { role: { select: { level: true } } },
+  });
+  const level = fresh?.role?.level ?? s.roleLevel;
+  return { minLevel: level + 1, currentLevel: level };
 }

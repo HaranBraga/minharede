@@ -20,6 +20,7 @@ interface Contact {
   dataNascimento?: string | null;
   role?: { id: string; label: string; level: number };
   parent?: { id: string; name: string } | null;
+  redeUser?: { id: string; username: string; active: boolean } | null;
 }
 
 interface Role { id: string; key: string; label: string; level: number; color: string; bgColor: string; }
@@ -28,16 +29,25 @@ interface Role { id: string; key: string; label: string; level: number; color: s
  * Modal mobile-first de edição COMPLETA do contato. Aceita todos os campos
  * relevantes (identificação + endereço + dados pessoais).
  */
-export function ContactEditForm({ contactId, onClose, onSaved, canChangeRole = false }: {
+export function ContactEditForm({ contactId, onClose, onSaved, canChangeRole = false, canCreateLogin = false }: {
   contactId: string;
   onClose: () => void;
   onSaved: (c: Contact) => void;
   canChangeRole?: boolean;
+  canCreateLogin?: boolean;
 }) {
   const [contact, setContact] = useState<Contact | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [roles, setRoles] = useState<Role[]>([]);
+
+  // Sub-form de criação de login pra contato existente
+  const [showCreateLogin, setShowCreateLogin] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [showNewPwd, setShowNewPwd] = useState(false);
+  const [creatingLogin, setCreatingLogin] = useState(false);
+  const [createdLoginInfo, setCreatedLoginInfo] = useState<{ username: string; password: string | null } | null>(null);
 
   const [form, setForm] = useState({
     name: "", phone: "", email: "",
@@ -70,6 +80,41 @@ export function ContactEditForm({ contactId, onClose, onSaved, canChangeRole = f
     if (!canChangeRole) return;
     fetch("/api/roles").then(r => r.json()).then(setRoles).catch(() => setRoles([]));
   }, [canChangeRole]);
+
+  async function createLogin() {
+    if (!contact) return;
+    if (newUsername.trim().length < 3) { toast.error("Usuário inválido (mín 3 chars)"); return; }
+    setCreatingLogin(true);
+    try {
+      const r = await fetch("/api/admin/users", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contactId: contact.id,
+          username: newUsername.trim().toLowerCase(),
+          password: newPassword || undefined,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) { toast.error(data.error || "Erro"); return; }
+      toast.success("Login criado");
+      setCreatedLoginInfo({
+        username: data.username,
+        password: newPassword ? null : "123456",
+      });
+      // Atualiza o contact local pra mostrar o novo login
+      setContact(c => c ? { ...c, redeUser: { id: data.id, username: data.username, active: data.active ?? true } } : c);
+      setShowCreateLogin(false);
+      setNewUsername(""); setNewPassword("");
+    } finally { setCreatingLogin(false); }
+  }
+
+  function suggestUsername(): string {
+    if (!contact) return "";
+    return contact.name.toLowerCase()
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "")
+      .slice(0, 32);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -217,6 +262,80 @@ export function ContactEditForm({ contactId, onClose, onSaved, canChangeRole = f
             </div>
           </div>
         </section>
+
+        {/* Acesso (login) — só pra admin (canCreateLogin) e cargos elegíveis */}
+        {canCreateLogin && contact && contact.role && contact.role.level <= 2 && (
+          <section className="space-y-3">
+            <h3 className="text-[11px] uppercase tracking-wide font-bold text-gray-400">Acesso</h3>
+            {contact.redeUser ? (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-bold text-xs shrink-0">
+                  @
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-mono text-sm text-gray-900 truncate">@{contact.redeUser.username}</p>
+                  <p className="text-[11px] text-gray-500">
+                    {contact.redeUser.active ? "Login ativo" : "Login inativo"}
+                  </p>
+                </div>
+              </div>
+            ) : createdLoginInfo ? (
+              <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 space-y-2">
+                <p className="text-sm font-semibold text-gray-900">Login criado!</p>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500">Usuário</p>
+                  <p className="font-mono text-base text-gray-900 mt-0.5">{createdLoginInfo.username}</p>
+                </div>
+                {createdLoginInfo.password && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500">Senha padrão</p>
+                    <p className="font-mono text-base text-gray-900 mt-0.5">{createdLoginInfo.password}</p>
+                  </div>
+                )}
+                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                  ⚠ Anote ou tire um print. A senha pode ser trocada depois.
+                </p>
+              </div>
+            ) : !showCreateLogin ? (
+              <button type="button"
+                onClick={() => { setShowCreateLogin(true); setNewUsername(suggestUsername()); }}
+                className="w-full py-3 text-sm font-semibold text-brand-700 border border-brand-200 bg-brand-50 active:bg-brand-100 rounded-xl">
+                + Criar login pra esse contato
+              </button>
+            ) : (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-3">
+                <div>
+                  <label className={lbl}>Usuário *</label>
+                  <input value={newUsername} autoCapitalize="none"
+                    onChange={e => setNewUsername(e.target.value.toLowerCase())}
+                    placeholder="ex: joao.silva" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Senha <span className="text-gray-400 font-normal">(opcional — default: 123456)</span></label>
+                  <div className="relative">
+                    <input type={showNewPwd ? "text" : "password"}
+                      value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                      placeholder="Deixe vazio pra usar 123456" className={inp + " pr-11"} />
+                    <button type="button" onClick={() => setShowNewPwd(s => !s)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-gray-400">
+                      {showNewPwd ? "👁" : "👁"}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setShowCreateLogin(false)}
+                    className="flex-1 py-2.5 text-sm text-gray-600 border border-gray-200 rounded-lg active:bg-gray-100">
+                    Cancelar
+                  </button>
+                  <button type="button" onClick={createLogin} disabled={creatingLogin || newUsername.length < 3}
+                    className="flex-1 py-2.5 text-sm font-semibold text-white bg-brand-600 active:bg-brand-700 rounded-lg disabled:opacity-50">
+                    {creatingLogin ? "Criando..." : "Criar login"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         <div className="flex gap-2 pt-3 border-t border-gray-100 sticky bottom-0 bg-white -mx-5 px-5 py-3">
           <button type="button" onClick={onClose}

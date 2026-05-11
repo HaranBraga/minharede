@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   const roleId = await getApoiadorRoleId();
   if (!roleId) return NextResponse.json({ error: "Cargo de apoiador não configurado" }, { status: 500 });
 
-  const allowed = rolesAllowedToCreate(s);
+  const allowed = await rolesAllowedToCreate(s);
   if (3 < allowed.minLevel) {
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
   }

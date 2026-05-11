@@ -142,6 +142,7 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
       cidade: true, bairro: true, rua: true, zona: true, genero: true, dataNascimento: true,
       role: { select: { id: true, key: true, label: true, level: true, color: true, bgColor: true } },
       parent: { select: { id: true, name: true } },
+      redeUser: { select: { id: true, username: true, active: true } },
     },
   });
   if (!c) return NextResponse.json({ error: "Não encontrado" }, { status: 404 });

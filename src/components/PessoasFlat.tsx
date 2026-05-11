@@ -327,6 +327,7 @@ export function PessoasFlat({ canChangeRole = true }: { canChangeRole?: boolean 
         <ContactEditForm
           contactId={editingId}
           canChangeRole={canChangeRole}
+          canCreateLogin={canChangeRole}
           onClose={() => setEditingId(null)}
           onSaved={() => { setEditingId(null); load(); toast.success("Atualizado"); }} />
       )}

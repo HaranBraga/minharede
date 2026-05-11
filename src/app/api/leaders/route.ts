@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
   const me = await getSession();
   if (!me) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
 
-  const allowed = rolesAllowedToCreate(me);
+  const allowed = await rolesAllowedToCreate(me);
   if (2 < allowed.minLevel) {
     return NextResponse.json({ error: "Você não tem permissão pra criar líderes" }, { status: 403 });
   }

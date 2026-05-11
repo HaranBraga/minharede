@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Plus, Search, Trash2, Edit2, Phone, MapPin, ChevronRight, Home, Users,
   Link as LinkIcon, Copy, Globe,
@@ -47,21 +48,38 @@ const LEVEL_LABEL_PL: Record<number, string> = {
 export function NetworkExplorer({ session }: { session: ExplorerSession }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
 
-  // path: stack de contactIds. Empty array = raiz da rede inteira (admin).
-  // Pra member: começa com [contactId] (vê próprios filhos). Pra admin: [] (vê top-level).
-  const [path, setPath] = useState<string[]>(
-    session.contactId ? [session.contactId] : []
-  );
+  // path: stack de contactIds, persistido no query string ?p=id1,id2,id3
+  // para que o botão "voltar" do navegador volte um nível dentro da rede
+  // em vez de sair do painel inteiro.
+  const path: string[] = useMemo(() => {
+    const raw = searchParams.get("p");
+    if (raw) return raw.split(",").filter(Boolean);
+    return session.contactId ? [session.contactId] : [];
+  }, [searchParams, session.contactId]);
+
   const currentId: string | null = path[path.length - 1] ?? null;
 
+  const writePath = useCallback((next: string[]) => {
+    const sp = new URLSearchParams(Array.from(searchParams.entries()));
+    if (next.length === 0) sp.delete("p");
+    else sp.set("p", next.join(","));
+    const qs = sp.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
+  }, [searchParams, router, pathname]);
+
   // Categoria selecionada dentro do nó atual (drill em "Coordenadores",
-  // "Líderes" ou "Apoiadores" diretos do nó). null = mostra os cards de
-  // categoria; número = mostra a lista daquele cargo.
+  // "Líderes" ou "Apoiadores"). null = mostra os cards de categoria;
+  // número = mostra a lista daquele cargo. `categoryDirectOnly` filtra
+  // pra mostrar SÓ os diretos (sem descer pela rede).
   const [category, setCategory] = useState<number | null>(null);
+  const [categoryDirectOnly, setCategoryDirectOnly] = useState(false);
 
   // Reseta categoria ao navegar pra outro nó
-  useEffect(() => { setCategory(null); }, [currentId]);
+  useEffect(() => { setCategory(null); setCategoryDirectOnly(false); }, [currentId]);
 
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -116,6 +134,23 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
       });
   }, [childrenByParent, currentId]);
 
+  // Tamanho da rede (descendentes recursivos) por contato — usado nos cards
+  // de líder/coord pra mostrar quantos estão na rede de cada um.
+  const networkSizeById = useMemo(() => {
+    const sizes = new Map<string, number>();
+    function getSize(id: string): number {
+      const cached = sizes.get(id);
+      if (cached !== undefined) return cached;
+      const kids = childrenByParent.get(id) ?? [];
+      let total = 0;
+      for (const k of kids) total += 1 + getSize(k.id);
+      sizes.set(id, total);
+      return total;
+    }
+    for (const c of contacts) getSize(c.id);
+    return sizes;
+  }, [contacts, childrenByParent]);
+
   // TODOS os descendentes recursivos do nó atual (não inclui o próprio)
   const allDescendants = useMemo(() => {
     const out: Contact[] = [];
@@ -145,18 +180,29 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
     return Array.from(map.values()).sort((a, b) => a.level - b.level);
   }, [allDescendants]);
 
-  // Quando uma categoria está selecionada, lista TODOS recursivos
-  // daquele cargo abaixo do nó atual, filtrados pelo search
+  // Quando uma categoria está selecionada, lista descendentes (ou só
+  // filhos diretos, quando categoryDirectOnly) daquele cargo
   const categoryItems = useMemo(() => {
     if (category === null) return [];
-    let list = allDescendants.filter(c => c.role.level === category);
+    const source = categoryDirectOnly ? allChildren : allDescendants;
+    let list = source.filter(c => c.role.level === category);
     const q = search.trim().toLowerCase();
     if (q) list = list.filter(c =>
       c.name.toLowerCase().includes(q) ||
       (c.cidade ?? "").toLowerCase().includes(q)
     );
     return list.sort((a, b) => a.name.localeCompare(b.name));
-  }, [allDescendants, category, search]);
+  }, [allDescendants, allChildren, category, categoryDirectOnly, search]);
+
+  // Apoiadores DIRETOS do nó atual (parent === currentId). Card aparece só
+  // quando o nó visualizado é coord ou coord-grupo (níveis 0 e 1).
+  const directApoiadores = useMemo(() => {
+    if (currentContact.level !== 0 && currentContact.level !== 1) return null;
+    const apoiadorLv = 3;
+    const directs = allChildren.filter(c => c.role.level === apoiadorLv);
+    if (directs.length === 0) return null;
+    return { level: apoiadorLv, role: directs[0].role, count: directs.length };
+  }, [allChildren, currentContact.level]);
 
   // Total descendentes recursivo (já computado em allDescendants)
   const descendantCount = allDescendants.length;
@@ -189,13 +235,13 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
 
   function navigateTo(id: string | null) {
     setSearch("");
-    if (id === null) { setPath([]); return; }
+    if (id === null) { writePath([]); return; }
     const idx = path.indexOf(id);
-    if (idx >= 0) { setPath(path.slice(0, idx + 1)); return; }
-    setPath([...path, id]);
+    if (idx >= 0) { writePath(path.slice(0, idx + 1)); return; }
+    writePath([...path, id]);
   }
   function navigateUp() {
-    if (path.length > 0) setPath(path.slice(0, -1));
+    if (path.length > 0) writePath(path.slice(0, -1));
   }
 
   async function deleteContact(c: Contact) {
@@ -257,18 +303,13 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2 mt-4">
-          <div className="bg-gray-50 rounded-xl p-3">
+        <div className="mt-4">
+          <div className="bg-gray-50 rounded-xl p-4">
             <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500 flex items-center gap-1">
-              <Users size={10} />Diretos
-            </p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{allChildren.length}</p>
-          </div>
-          <div className="bg-gray-50 rounded-xl p-3">
-            <p className="text-[10px] uppercase tracking-wide font-semibold text-gray-500">
+              <Users size={10} />
               {currentId === null ? "Total cadastrados" : "Total na rede"}
             </p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{descendantCount}</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{descendantCount.toLocaleString("pt-BR")}</p>
           </div>
         </div>
 
@@ -301,17 +342,18 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
       {category !== null ? (
         <>
           <div className="flex items-center justify-between gap-2">
-            <button onClick={() => setCategory(null)}
+            <button onClick={() => { setCategory(null); setCategoryDirectOnly(false); }}
               className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 active:text-brand-700">
               <ChevronRight size={14} className="rotate-180" />
               {LEVEL_LABEL_PL[category]}
+              {categoryDirectOnly && <span className="text-[11px] text-brand-600">· diretos</span>}
             </button>
             <span className="text-xs text-gray-400">
               {categoryItems.length} {categoryItems.length === 1 ? "pessoa" : "pessoas"}
             </span>
           </div>
 
-          {allDescendants.filter(c => c.role.level === category).length > 5 && (
+          {categoryItems.length > 5 && (
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={search} onChange={e => setSearch(e.target.value)}
@@ -328,6 +370,7 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
             <div className="space-y-2">
               {categoryItems.map(c => (
                 <ChildRow key={c.id} contact={c}
+                  networkSize={networkSizeById.get(c.id) ?? 0}
                   onOpen={() => navigateTo(c.id)}
                   onEdit={() => setEditingId(c.id)}
                   onDelete={() => deleteContact(c)} />
@@ -358,8 +401,16 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
                   level={cat.level}
                   role={cat.role}
                   count={cat.total}
-                  onClick={() => setCategory(cat.level)} />
+                  onClick={() => { setCategory(cat.level); setCategoryDirectOnly(false); }} />
               ))}
+              {directApoiadores && (
+                <CategoryCard key="direct-apoiadores"
+                  level={directApoiadores.level}
+                  role={directApoiadores.role}
+                  count={directApoiadores.count}
+                  labelOverride="Apoiadores diretos"
+                  onClick={() => { setCategory(directApoiadores.level); setCategoryDirectOnly(true); }} />
+              )}
             </div>
           )}
         </>
@@ -385,6 +436,7 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
         <ContactEditForm
           contactId={editingId}
           canChangeRole={session.isAdmin || session.roleLevel <= 1}
+          canCreateLogin={session.isAdmin}
           onClose={() => setEditingId(null)}
           onSaved={() => { setEditingId(null); load(); }} />
       )}
@@ -392,11 +444,12 @@ export function NetworkExplorer({ session }: { session: ExplorerSession }) {
   );
 }
 
-function CategoryCard({ level, role, count, onClick }: {
+function CategoryCard({ level, role, count, onClick, labelOverride }: {
   level: number;
   role: Role;
   count: number;
   onClick: () => void;
+  labelOverride?: string;
 }) {
   return (
     <button onClick={onClick}
@@ -408,10 +461,10 @@ function CategoryCard({ level, role, count, onClick }: {
           style={{ backgroundColor: role.bgColor, color: role.color }}>
           <Users size={18} />
         </div>
-        <p className="text-3xl font-bold text-gray-900 leading-none">{count}</p>
+        <p className="text-3xl font-bold text-gray-900 leading-none">{count.toLocaleString("pt-BR")}</p>
         <p className="text-[11px] uppercase tracking-wide font-semibold mt-1.5"
           style={{ color: role.color }}>
-          {LEVEL_LABEL_PL[level] ?? role.label}
+          {labelOverride ?? LEVEL_LABEL_PL[level] ?? role.label}
         </p>
         <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
           Ver lista <ChevronRight size={10} />
@@ -421,8 +474,9 @@ function CategoryCard({ level, role, count, onClick }: {
   );
 }
 
-function ChildRow({ contact, onOpen, onEdit, onDelete }: {
+function ChildRow({ contact, networkSize, onOpen, onEdit, onDelete }: {
   contact: Contact;
+  networkSize: number;
   onOpen: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -447,9 +501,9 @@ function ChildRow({ contact, onOpen, onEdit, onDelete }: {
             </span>
           </div>
           <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-0.5">
-            {!isApoiad && contact._count.children > 0 && (
+            {!isApoiad && networkSize > 0 && (
               <span className="font-semibold text-brand-600">
-                {contact._count.children} {contact._count.children === 1 ? "pessoa" : "pessoas"}
+                {networkSize.toLocaleString("pt-BR")} na rede
               </span>
             )}
             {phoneShown && <span className="flex items-center gap-0.5"><Phone size={9} />{phoneShown}</span>}

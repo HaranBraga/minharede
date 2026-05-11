@@ -245,12 +245,21 @@ interface ParentContact {
   role: { label: string; color: string; bgColor: string; level: number };
 }
 
+interface NoLoginContact {
+  id: string; name: string; cidade: string | null;
+  role: { id: string; key: string; label: string; level: number; color: string; bgColor: string };
+  parent: { id: string; name: string } | null;
+}
+
 function UserForm({ initial, onClose, onSaved }: {
   initial: RedeUserRow | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const isEdit = !!initial;
+
+  // Modo: criar contato novo OU vincular login a contato já cadastrado
+  const [mode, setMode] = useState<"new" | "existing">("new");
 
   const [username, setUsername] = useState(initial?.username ?? "");
   const [password, setPassword] = useState("");
@@ -264,12 +273,43 @@ function UserForm({ initial, onClose, onSaved }: {
   const [busy, setBusy]             = useState(false);
   const [createdLogin, setCreatedLogin] = useState<{ username: string; password: string | null; name: string } | null>(null);
 
+  // Modo "existing": contatos sem login
+  const [noLoginList, setNoLoginList]       = useState<NoLoginContact[]>([]);
+  const [noLoginSearch, setNoLoginSearch]   = useState("");
+  const [noLoginLoading, setNoLoginLoading] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<NoLoginContact | null>(null);
+
   // Carrega parents elegíveis ao mudar role
   useEffect(() => {
-    if (isEdit) return;
+    if (isEdit || mode !== "new") return;
     fetch(`/api/admin/parents?level=${roleLevel}`).then(r => r.json()).then(setParents).catch(() => setParents([]));
     setParentId("");
-  }, [roleLevel, isEdit]);
+  }, [roleLevel, isEdit, mode]);
+
+  // Carrega contatos sem login (debounced)
+  useEffect(() => {
+    if (isEdit || mode !== "existing") return;
+    setNoLoginLoading(true);
+    const t = setTimeout(() => {
+      const q = encodeURIComponent(noLoginSearch.trim());
+      fetch(`/api/admin/contacts-without-login${q ? `?q=${q}` : ""}`)
+        .then(r => r.json()).then((data) => setNoLoginList(Array.isArray(data) ? data : []))
+        .catch(() => setNoLoginList([]))
+        .finally(() => setNoLoginLoading(false));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [mode, noLoginSearch, isEdit]);
+
+  // Quando seleciona um contato existente, sugere username baseado no nome
+  useEffect(() => {
+    if (mode === "existing" && selectedContact && !username) {
+      const slug = selectedContact.name.toLowerCase()
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "")
+        .slice(0, 32);
+      if (slug.length >= 3) setUsername(slug);
+    }
+  }, [selectedContact, mode, username]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -285,6 +325,20 @@ function UserForm({ initial, onClose, onSaved }: {
         if (!r.ok) { const d = await r.json(); toast.error(d.error || "Erro"); return; }
         toast.success("Atualizado");
         onSaved();
+      } else if (mode === "existing") {
+        if (!selectedContact) { toast.error("Escolha um contato"); return; }
+        const body: any = { contactId: selectedContact.id, username, password };
+        const r = await fetch("/api/admin/users", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) { const d = await r.json(); toast.error(d.error || "Erro"); return; }
+        toast.success("Login criado");
+        setCreatedLogin({
+          username: username.toLowerCase().trim(),
+          password: password ? null : "123456",
+          name: selectedContact.name,
+        });
       } else {
         const body: any = {
           ...personFormToPayload(personForm),
@@ -346,48 +400,132 @@ function UserForm({ initial, onClose, onSaved }: {
       <form onSubmit={submit} className="flex flex-col gap-4">
         {!isEdit && (
           <>
-            <section className="space-y-3">
-              <h3 className="text-[11px] uppercase tracking-wide font-bold text-gray-400">Cargo</h3>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { lv: 0, label: "Coord. Grupo" },
-                  { lv: 1, label: "Coordenador" },
-                  { lv: 2, label: "Líder" },
-                ].map(r => (
-                  <button key={r.lv} type="button" onClick={() => setRoleLevel(r.lv)}
-                    className={`py-2.5 px-2 text-xs font-semibold rounded-xl border ${
-                      roleLevel === r.lv
-                        ? "border-brand-300 bg-brand-50 text-brand-700"
-                        : "border-gray-200 text-gray-600 active:bg-gray-50"
-                    }`}>
-                    {r.label}
-                  </button>
-                ))}
-              </div>
-              {roleLevel > 0 && parents.length > 0 && (
-                <div>
-                  <label className={lbl}>
-                    {roleLevel === 1 ? "Coordenador de Grupo (opcional)" : "Coordenador (opcional)"}
-                  </label>
-                  <select value={parentId} onChange={e => setParentId(e.target.value)}
-                    className={inp + " bg-white"}>
-                    <option value="">— Sem vínculo —</option>
-                    {parents.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} ({p.role.label})</option>
-                    ))}
-                  </select>
+            {/* Toggle de modo */}
+            <div className="grid grid-cols-2 gap-2 p-1 bg-gray-100 rounded-xl">
+              {[
+                { v: "new", label: "Cadastrar pessoa" },
+                { v: "existing", label: "Pessoa já cadastrada" },
+              ].map(o => (
+                <button key={o.v} type="button" onClick={() => setMode(o.v as any)}
+                  className={`py-2 text-xs font-semibold rounded-lg transition-colors ${
+                    mode === o.v
+                      ? "bg-white text-brand-700 shadow-sm"
+                      : "text-gray-600 active:bg-white/50"
+                  }`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+
+            {mode === "existing" ? (
+              <section className="space-y-3">
+                <h3 className="text-[11px] uppercase tracking-wide font-bold text-gray-400">
+                  Escolha quem vai receber o login
+                </h3>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input value={noLoginSearch} onChange={e => setNoLoginSearch(e.target.value)}
+                    placeholder="Buscar nome..."
+                    className="w-full pl-10 pr-3 py-3 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100" />
                 </div>
-              )}
-            </section>
+                {selectedContact ? (
+                  <div className="bg-brand-50 border border-brand-200 rounded-xl p-3 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0"
+                      style={{ backgroundColor: selectedContact.role.bgColor, color: selectedContact.role.color }}>
+                      {selectedContact.name[0]?.toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm truncate">{selectedContact.name}</p>
+                      <p className="text-[11px] text-gray-500">{selectedContact.role.label}</p>
+                    </div>
+                    <button type="button" onClick={() => { setSelectedContact(null); setUsername(""); }}
+                      className="text-xs text-gray-500 active:text-red-600 px-2 py-1 rounded-lg border border-gray-200">
+                      Trocar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="max-h-[260px] overflow-y-auto space-y-1.5 -mx-1 px-1">
+                    {noLoginLoading ? (
+                      <p className="text-center text-xs text-gray-400 py-4">Carregando...</p>
+                    ) : noLoginList.length === 0 ? (
+                      <p className="text-center text-xs text-gray-400 py-4">
+                        {noLoginSearch ? "Ninguém encontrado." : "Todos os contatos elegíveis já têm login."}
+                      </p>
+                    ) : noLoginList.map(c => (
+                      <button key={c.id} type="button" onClick={() => setSelectedContact(c)}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-200 bg-white active:bg-gray-50 text-left">
+                        <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0"
+                          style={{ backgroundColor: c.role.bgColor, color: c.role.color }}>
+                          {c.name[0]?.toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-semibold text-gray-900 text-sm truncate">{c.name}</p>
+                            <span className="text-[9px] uppercase tracking-wide font-semibold px-1.5 py-px rounded-full"
+                              style={{ color: c.role.color, backgroundColor: c.role.bgColor }}>
+                              {c.role.label}
+                            </span>
+                          </div>
+                          {(c.parent || c.cidade) && (
+                            <p className="text-[11px] text-gray-500 truncate">
+                              {c.parent ? `sob ${c.parent.name}` : ""}
+                              {c.parent && c.cidade ? " · " : ""}
+                              {c.cidade ?? ""}
+                            </p>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="border-t border-gray-100 -mx-5" />
+              </section>
+            ) : (
+              <>
+                <section className="space-y-3">
+                  <h3 className="text-[11px] uppercase tracking-wide font-bold text-gray-400">Cargo</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { lv: 0, label: "Coord. Grupo" },
+                      { lv: 1, label: "Coordenador" },
+                      { lv: 2, label: "Líder" },
+                    ].map(r => (
+                      <button key={r.lv} type="button" onClick={() => setRoleLevel(r.lv)}
+                        className={`py-2.5 px-2 text-xs font-semibold rounded-xl border ${
+                          roleLevel === r.lv
+                            ? "border-brand-300 bg-brand-50 text-brand-700"
+                            : "border-gray-200 text-gray-600 active:bg-gray-50"
+                        }`}>
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                  {roleLevel > 0 && parents.length > 0 && (
+                    <div>
+                      <label className={lbl}>
+                        {roleLevel === 1 ? "Coordenador de Grupo (opcional)" : "Coordenador (opcional)"}
+                      </label>
+                      <select value={parentId} onChange={e => setParentId(e.target.value)}
+                        className={inp + " bg-white"}>
+                        <option value="">— Sem vínculo —</option>
+                        {parents.map(p => (
+                          <option key={p.id} value={p.id}>{p.name} ({p.role.label})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </section>
 
-            <div className="border-t border-gray-100 -mx-5" />
+                <div className="border-t border-gray-100 -mx-5" />
 
-            <section className="space-y-3">
-              <h3 className="text-[11px] uppercase tracking-wide font-bold text-gray-400">Pessoa</h3>
-              <PersonFormFields form={personForm} setForm={setPersonForm} autoFocus={false} />
-            </section>
+                <section className="space-y-3">
+                  <h3 className="text-[11px] uppercase tracking-wide font-bold text-gray-400">Pessoa</h3>
+                  <PersonFormFields form={personForm} setForm={setPersonForm} autoFocus={false} />
+                </section>
 
-            <div className="border-t border-gray-100 -mx-5" />
+                <div className="border-t border-gray-100 -mx-5" />
+              </>
+            )}
           </>
         )}
 
@@ -433,7 +571,7 @@ function UserForm({ initial, onClose, onSaved }: {
         <div className="flex gap-2 pt-3 border-t border-gray-100 sticky bottom-0 bg-white -mx-5 px-5 py-3">
           <button type="button" onClick={onClose}
             className="flex-1 py-3 text-base text-gray-600 border border-gray-200 rounded-xl active:bg-gray-50">Cancelar</button>
-          <button disabled={busy}
+          <button disabled={busy || (!isEdit && mode === "existing" && !selectedContact)}
             className="flex-1 py-3 text-base font-semibold text-white bg-brand-600 active:bg-brand-700 rounded-xl disabled:opacity-60">
             {busy ? "Salvando..." : (isEdit ? "Atualizar" : "Criar login")}
           </button>

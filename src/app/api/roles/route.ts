@@ -9,6 +9,6 @@ export async function GET() {
   const s = await getSession();
   if (!s) return NextResponse.json([]);
   const all = await prisma.personRole.findMany({ orderBy: { level: "asc" } });
-  const { minLevel } = rolesAllowedToCreate(s);
+  const { minLevel } = await rolesAllowedToCreate(s);
   return NextResponse.json(all.filter(r => r.level >= minLevel));
 }
