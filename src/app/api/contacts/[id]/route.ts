@@ -78,15 +78,26 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     }
     data.roleId = newRole.id;
 
-    // Se o cargo mudou pra um nível >= ao do parent atual, limpa o parent
-    // (parent precisa ter nível menor que o contato pra hierarquia bater).
+    // Se o pai atual ficou inválido pra hierarquia (mesmo nível ou maior),
+    // SOBE pela árvore até achar um ancestral com nível menor que o novo cargo.
+    // Assim o promovido NÃO sai da rede — vira filho do antigo "avô" e fica
+    // como irmão do ex-pai (que era do mesmo nível).
     const current = await prisma.contact.findUnique({
       where: { id: params.id },
-      select: { parentId: true, parent: { select: { role: { select: { level: true } } } } },
+      select: { parentId: true },
     });
-    if (current?.parent && current.parent.role.level >= newRole.level) {
-      data.parentId = null;
+    let candidateParentId: string | null = current?.parentId ?? null;
+    for (let i = 0; i < 10 && candidateParentId; i++) {
+      const ancestor: { parentId: string | null; role: { level: number } } | null =
+        await prisma.contact.findUnique({
+          where: { id: candidateParentId },
+          select: { parentId: true, role: { select: { level: true } } },
+        });
+      if (!ancestor) { candidateParentId = null; break; }
+      if (ancestor.role.level < newRole.level) break; // pai válido — para
+      candidateParentId = ancestor.parentId;          // sobe mais um nível
     }
+    data.parentId = candidateParentId;
   }
 
   // Apenas admin pode reatribuir parent (coordinator)
