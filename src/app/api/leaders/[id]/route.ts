@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, canManageContact } from "@/lib/auth";
-import { getCoordRoleId, publicLink, uniqueSlug } from "@/lib/rede";
+import { getCoordRoleId, publicLink } from "@/lib/rede";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,7 +22,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (!name?.trim()) return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
 
   const trimmed = String(name).trim().toUpperCase();
-  const newSlug = await uniqueSlug(trimmed, params.id);
+  // Não regenera publicSlug — o slug é o que sustenta o link de formulário
+  // já compartilhado. Mudar o nome NÃO quebra o link existente.
 
   let dataExtra: any = {};
   if (s.type === "admin" && coordName !== undefined) {
@@ -46,7 +47,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
   const updated = await prisma.contact.update({
     where: { id: params.id },
-    data: { name: trimmed, publicSlug: newSlug, ...dataExtra },
+    data: { name: trimmed, ...dataExtra },
     select: {
       id: true, name: true, publicSlug: true,
       parent: { select: { name: true } },

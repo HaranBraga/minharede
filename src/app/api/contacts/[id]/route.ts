@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, canManageContact } from "@/lib/auth";
-import { getCoordRoleId, publicLink, uniqueSlug } from "@/lib/rede";
+import { getCoordRoleId, publicLink } from "@/lib/rede";
 import { upperOrNull } from "@/lib/contact-normalize";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +35,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     const trimmed = String(body.name).trim();
     if (!trimmed) return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
     data.name = trimmed.toUpperCase();
-    data.publicSlug = await uniqueSlug(data.name, params.id);
+    // publicSlug NÃO é regenerado: o slug é o que sustenta os links de formulário
+    // já em circulação. Quem editar o nome mantém o link original.
   }
   if (body.phone !== undefined) {
     const d = String(body.phone).replace(/\D/g, "");

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, canManageContact } from "@/lib/auth";
-import { publicLink, uniqueSlug } from "@/lib/rede";
+import { publicLink } from "@/lib/rede";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,10 +20,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   const { name } = await req.json().catch(() => ({}));
   if (!name?.trim()) return NextResponse.json({ error: "Nome é obrigatório" }, { status: 400 });
   const trimmed = String(name).trim().toUpperCase();
-  const newSlug = await uniqueSlug(trimmed, params.id);
+  // Não regenera publicSlug — o slug é o que sustenta o link de formulário
+  // já compartilhado. Mudar o nome NÃO quebra o link existente.
   const updated = await prisma.contact.update({
     where: { id: params.id },
-    data: { name: trimmed, publicSlug: newSlug },
+    data: { name: trimmed },
     select: { id: true, name: true, publicSlug: true },
   });
   const base = baseUrl(req);
