@@ -62,9 +62,14 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // path: stack de contactIds, persistido no query string ?p=id1,id2,id3
-  // para que o botão "voltar" do navegador volte um nível dentro da rede
-  // em vez de sair do painel inteiro.
+  // Estado de navegação inteiramente derivado da URL pra que o botão
+  // "voltar" do navegador desfaça cada passo (drill in, abrir categoria,
+  // alternar direct-only) em ordem reversa.
+  //
+  // Query params:
+  //  - p:  stack de contactIds separados por vírgula (caminho da rede)
+  //  - c:  level de cargo aberto em modo lista (0..3); ausente = cards
+  //  - cd: "1" quando o modo lista filtra só diretos
   const path: string[] = useMemo(() => {
     const raw = searchParams.get("p");
     if (raw) return raw.split(",").filter(Boolean);
@@ -73,23 +78,37 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
 
   const currentId: string | null = path[path.length - 1] ?? null;
 
-  const writePath = useCallback((next: string[]) => {
+  const category: number | null = useMemo(() => {
+    const raw = searchParams.get("c");
+    if (raw === null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }, [searchParams]);
+
+  const categoryDirectOnly = searchParams.get("cd") === "1";
+
+  /** Atualiza URL preservando params que não foram mexidos. */
+  const writeState = useCallback((next: {
+    path?: string[];
+    category?: number | null;
+    directOnly?: boolean;
+  }) => {
     const sp = new URLSearchParams(searchParams.toString());
-    if (next.length === 0) sp.delete("p");
-    else sp.set("p", next.join(","));
+    if (next.path !== undefined) {
+      if (next.path.length === 0) sp.delete("p");
+      else sp.set("p", next.path.join(","));
+    }
+    if (next.category !== undefined) {
+      if (next.category === null) sp.delete("c");
+      else sp.set("c", String(next.category));
+    }
+    if (next.directOnly !== undefined) {
+      if (next.directOnly) sp.set("cd", "1");
+      else sp.delete("cd");
+    }
     const qs = sp.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }, [searchParams, router, pathname]);
-
-  // Categoria selecionada dentro do nó atual (drill em "Coordenadores",
-  // "Líderes" ou "Apoiadores"). null = mostra os cards de categoria;
-  // número = mostra a lista daquele cargo. `categoryDirectOnly` filtra
-  // pra mostrar SÓ os diretos (sem descer pela rede).
-  const [category, setCategory] = useState<number | null>(null);
-  const [categoryDirectOnly, setCategoryDirectOnly] = useState(false);
-
-  // Reseta categoria ao navegar pra outro nó
-  useEffect(() => { setCategory(null); setCategoryDirectOnly(false); }, [currentId]);
 
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -262,13 +281,14 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
 
   function navigateTo(id: string | null) {
     setSearch("");
-    if (id === null) { writePath([]); return; }
+    // Navegar pra outro nó sempre limpa o modo categoria (passa a mostrar os cards)
+    if (id === null) { writeState({ path: [], category: null, directOnly: false }); return; }
     const idx = path.indexOf(id);
-    if (idx >= 0) { writePath(path.slice(0, idx + 1)); return; }
-    writePath([...path, id]);
+    if (idx >= 0) { writeState({ path: path.slice(0, idx + 1), category: null, directOnly: false }); return; }
+    writeState({ path: [...path, id], category: null, directOnly: false });
   }
   function navigateUp() {
-    if (path.length > 0) writePath(path.slice(0, -1));
+    if (path.length > 0) writeState({ path: path.slice(0, -1), category: null, directOnly: false });
   }
 
   async function deleteContact(c: Contact) {
@@ -369,7 +389,7 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
       {category !== null ? (
         <>
           <div className="flex items-center justify-between gap-2">
-            <button onClick={() => { setCategory(null); setCategoryDirectOnly(false); }}
+            <button onClick={() => writeState({ category: null, directOnly: false })}
               className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 active:text-brand-700">
               <ChevronRight size={14} className="rotate-180" />
               {LEVEL_LABEL_PL[category]}
@@ -428,7 +448,7 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
                   level={cat.level}
                   role={cat.role}
                   count={cat.total}
-                  onClick={() => { setCategory(cat.level); setCategoryDirectOnly(false); }} />
+                  onClick={() => writeState({ category: cat.level, directOnly: false })} />
               ))}
               {directApoiadores && (
                 <CategoryCard key="direct-apoiadores"
@@ -436,7 +456,7 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
                   role={directApoiadores.role}
                   count={directApoiadores.count}
                   labelOverride="Apoiadores diretos"
-                  onClick={() => { setCategory(directApoiadores.level); setCategoryDirectOnly(true); }} />
+                  onClick={() => writeState({ category: directApoiadores.level, directOnly: true })} />
               )}
             </div>
           )}
