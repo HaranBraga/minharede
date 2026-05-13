@@ -429,12 +429,14 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
             </p>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            <button onClick={exportToPdf} disabled={exporting || loading}
-              className="text-xs text-gray-600 active:text-brand-700 px-2 py-1 border border-gray-200 rounded-lg flex items-center gap-1 disabled:opacity-50"
-              title="Exportar rede em PDF">
-              <Download size={12} />
-              {exporting ? "Gerando..." : "PDF"}
-            </button>
+            {currentId !== null && (
+              <button onClick={exportToPdf} disabled={exporting || loading}
+                className="text-xs text-gray-600 active:text-brand-700 px-2 py-1 border border-gray-200 rounded-lg flex items-center gap-1 disabled:opacity-50"
+                title="Exportar rede em PDF">
+                <Download size={12} />
+                {exporting ? "Gerando..." : "PDF"}
+              </button>
+            )}
             {path.length > (session.isAdmin ? 0 : 1) && (
               <button onClick={navigateUp}
                 className="text-xs text-gray-500 active:text-gray-800 px-2 py-1 border border-gray-200 rounded-lg">
