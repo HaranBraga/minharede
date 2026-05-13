@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Plus, Search, Trash2, Edit2, Phone, MapPin, ChevronRight, Home, Users,
-  Link as LinkIcon, Copy, Globe,
+  Link as LinkIcon, Copy, Globe, Download,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { BottomSheet } from "./BottomSheet";
@@ -291,6 +291,92 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
     if (path.length > 0) writeState({ path: path.slice(0, -1), category: null, directOnly: false });
   }
 
+  const [exporting, setExporting] = useState(false);
+
+  async function exportToPdf() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const [{ default: jsPDF }, autoTableMod] = await Promise.all([
+        import("jspdf"),
+        import("jspdf-autotable"),
+      ]);
+      const autoTable = (autoTableMod as any).default ?? autoTableMod;
+
+      // Lista plana com profundidade, percorrendo a hierarquia a partir do nó atual
+      function buildList(parentId: string | null, depth: number): { c: Contact; d: number }[] {
+        const out: { c: Contact; d: number }[] = [];
+        const kids = [...(childrenByParent.get(parentId) ?? [])].sort((a, b) => {
+          if (a.role.level !== b.role.level) return a.role.level - b.role.level;
+          return a.name.localeCompare(b.name);
+        });
+        for (const k of kids) {
+          out.push({ c: k, d: depth });
+          out.push(...buildList(k.id, depth + 1));
+        }
+        return out;
+      }
+      const flat = buildList(currentId, 0);
+
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const title = currentId === null ? "Toda a rede" : `Rede de ${currentContact.name}`;
+      const subtitle = currentId === null
+        ? "Visão de administrador"
+        : (LEVEL_LABEL_SG[currentContact.level] ?? "");
+      const dateStr = new Date().toLocaleDateString("pt-BR");
+      const totalStr = `${flat.length.toLocaleString("pt-BR")} ${flat.length === 1 ? "pessoa" : "pessoas"} na rede · Exportado em ${dateStr}`;
+
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text(title, 14, 18);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(100);
+      if (subtitle) doc.text(subtitle, 14, 24);
+      doc.text(totalStr, 14, subtitle ? 29 : 24);
+
+      if (flat.length === 0) {
+        doc.setFontSize(11);
+        doc.setTextColor(150);
+        doc.text("Rede vazia.", 14, 45);
+      } else {
+        const rows = flat.map(({ c, d }) => [
+          "  ".repeat(d) + c.name,
+          c.role.label,
+          displayPhone(c.phone) ?? "",
+          c.cidade ?? "",
+        ]);
+        autoTable(doc, {
+          startY: subtitle ? 35 : 30,
+          head: [["Nome", "Cargo", "Telefone", "Cidade"]],
+          body: rows,
+          styles: { fontSize: 8, cellPadding: 1.8, overflow: "linebreak" },
+          headStyles: { fillColor: [79, 70, 229], textColor: 255, fontSize: 9, fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          columnStyles: {
+            0: { cellWidth: 80, font: "courier" }, // Nome em monoespaçada pra indentação aparecer
+            1: { cellWidth: 35 },
+            2: { cellWidth: 32 },
+            3: { cellWidth: "auto" },
+          },
+          margin: { top: 14, left: 14, right: 14, bottom: 14 },
+        });
+      }
+
+      const safeName = (currentContact.name || "todos")
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase().replace(/^_|_$/g, "");
+      const isoDate = new Date().toISOString().split("T")[0];
+      doc.save(`rede_${safeName}_${isoDate}.pdf`);
+      toast.success("PDF gerado");
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao gerar PDF");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function deleteContact(c: Contact) {
     if (!confirm(`Excluir "${c.name}"?${c.role.level < 3 ? "\nDescendentes ficam desvinculados." : ""}`)) return;
     const r = await fetch(`/api/contacts/${c.id}`, { method: "DELETE" });
@@ -342,12 +428,20 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
               {currentId !== session.contactId && currentId !== null && <span> · da sua rede</span>}
             </p>
           </div>
-          {path.length > (session.isAdmin ? 0 : 1) && (
-            <button onClick={navigateUp}
-              className="text-xs text-gray-500 active:text-gray-800 px-2 py-1 border border-gray-200 rounded-lg shrink-0">
-              ← voltar
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button onClick={exportToPdf} disabled={exporting || loading}
+              className="text-xs text-gray-600 active:text-brand-700 px-2 py-1 border border-gray-200 rounded-lg flex items-center gap-1 disabled:opacity-50"
+              title="Exportar rede em PDF">
+              <Download size={12} />
+              {exporting ? "Gerando..." : "PDF"}
             </button>
-          )}
+            {path.length > (session.isAdmin ? 0 : 1) && (
+              <button onClick={navigateUp}
+                className="text-xs text-gray-500 active:text-gray-800 px-2 py-1 border border-gray-200 rounded-lg">
+                ← voltar
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-4">
