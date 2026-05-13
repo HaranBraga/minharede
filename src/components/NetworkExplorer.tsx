@@ -151,10 +151,13 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
     return { id: currentId, name: "?", slug: null, role: null, level: 99 };
   }, [currentId, session, contactById]);
 
-  // Map parentId → children pra facilitar BFS
+  // Map parentId → children pra facilitar BFS.
+  // Ignora auto-referência (parentId === id) pra evitar loops infinitos
+  // caso o banco tenha um contato apontando pra si mesmo.
   const childrenByParent = useMemo(() => {
     const m = new Map<string | null, Contact[]>();
     for (const c of contacts) {
+      if (c.parentId === c.id) continue;
       const k = c.parentId;
       if (!m.has(k)) m.set(k, []);
       m.get(k)!.push(c);
@@ -175,12 +178,17 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
   // de líder/coord pra mostrar quantos estão na rede de cada um.
   const networkSizeById = useMemo(() => {
     const sizes = new Map<string, number>();
+    const computing = new Set<string>();
     function getSize(id: string): number {
       const cached = sizes.get(id);
       if (cached !== undefined) return cached;
+      // Ciclo detectado (A→B→A): trata como folha pra não estourar a stack.
+      if (computing.has(id)) return 0;
+      computing.add(id);
       const kids = childrenByParent.get(id) ?? [];
       let total = 0;
       for (const k of kids) total += 1 + getSize(k.id);
+      computing.delete(id);
       sizes.set(id, total);
       return total;
     }
@@ -303,7 +311,9 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
       ]);
       const autoTable = (autoTableMod as any).default ?? autoTableMod;
 
-      // Lista plana com profundidade, percorrendo a hierarquia a partir do nó atual
+      // Lista plana com profundidade, percorrendo a hierarquia a partir do nó atual.
+      // Guard de ciclo: se um id já apareceu na cadeia de ancestrais, não revisita.
+      const seen = new Set<string>();
       function buildList(parentId: string | null, depth: number): { c: Contact; d: number }[] {
         const out: { c: Contact; d: number }[] = [];
         const kids = [...(childrenByParent.get(parentId) ?? [])].sort((a, b) => {
@@ -311,6 +321,8 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
           return a.name.localeCompare(b.name);
         });
         for (const k of kids) {
+          if (seen.has(k.id)) continue;
+          seen.add(k.id);
           out.push({ c: k, d: depth });
           out.push(...buildList(k.id, depth + 1));
         }
