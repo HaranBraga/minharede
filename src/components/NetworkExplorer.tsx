@@ -58,6 +58,13 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
+  // Apoiadores lazy-load state
+  const [apoiadorCountByParent, setApoiadorCountByParent] = useState<Record<string, number>>({});
+  const [totalApoiadores, setTotalApoiadores] = useState(0);
+  const [apoiadorRole, setApoiadorRole] = useState<Role | null>(null);
+  const [apoiadoresLoading, setApoiadoresLoading] = useState(false);
+  // Key do contexto cujos apoiadores já foram carregados (null = nenhum)
+  const [loadedContextKey, setLoadedContextKey] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -110,6 +117,26 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
     router.push(qs ? `${pathname}?${qs}` : pathname);
   }, [searchParams, router, pathname]);
 
+  // Lazy-load apoiadores quando o usuário entra na categoria de nível 3
+  useEffect(() => {
+    if (category !== 3) return;
+    let url: string;
+    let contextKey: string;
+    if (categoryDirectOnly && currentId) {
+      url = `/api/rede/apoiadores?parentId=${currentId}`;
+      contextKey = `direct:${currentId}`;
+    } else if (currentId === null) {
+      url = `/api/rede/apoiadores?all=1`;
+      contextKey = `all`;
+    } else {
+      url = `/api/rede/apoiadores?subtreeOf=${currentId}`;
+      contextKey = `subtree:${currentId}`;
+    }
+    if (loadedContextKey === contextKey) return;
+    loadApoiadores(url, contextKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category, currentId, categoryDirectOnly]);
+
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -117,9 +144,41 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch("/api/rede");
-      if (r.ok) setContacts((await r.json()).contacts ?? []);
+      const r = await fetch("/api/rede/tree");
+      if (r.ok) {
+        const data = await r.json();
+        setContacts(data.contacts ?? []);
+        setApoiadorCountByParent(data.apoiadorCountByParent ?? {});
+        setTotalApoiadores(data.totalApoiadores ?? 0);
+        setApoiadorRole(data.apoiadorRole ?? null);
+        setLoadedContextKey(null);
+      }
     } finally { setLoading(false); }
+  }, []);
+
+  const loadApoiadores = useCallback(async (url: string, contextKey: string) => {
+    setApoiadoresLoading(true);
+    try {
+      const r = await fetch(url);
+      if (!r.ok) return;
+      const apoiadores: Contact[] = await r.json();
+      setContacts(prev => {
+        const existing = new Set(prev.map(c => c.id));
+        const toAdd = apoiadores.filter(c => !existing.has(c.id));
+        return toAdd.length ? [...prev, ...toAdd] : prev;
+      });
+      // Remove parentIds carregados do mapa de contagem
+      const loadedPids = new Set(apoiadores.map(c => c.parentId).filter(Boolean) as string[]);
+      setApoiadorCountByParent(prev => {
+        if (loadedPids.size === 0) return prev;
+        const next = { ...prev };
+        for (const pid of loadedPids) delete next[pid];
+        return next;
+      });
+      setLoadedContextKey(contextKey);
+    } finally {
+      setApoiadoresLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -176,6 +235,8 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
 
   // Tamanho da rede (descendentes recursivos) por contato — usado nos cards
   // de líder/coord pra mostrar quantos estão na rede de cada um.
+  // Inclui apoiadores: os já carregados (em childrenByParent) + os ainda
+  // não carregados (via apoiadorCountByParent).
   const networkSizeById = useMemo(() => {
     const sizes = new Map<string, number>();
     const computing = new Set<string>();
@@ -186,15 +247,19 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
       if (computing.has(id)) return 0;
       computing.add(id);
       const kids = childrenByParent.get(id) ?? [];
-      let total = 0;
-      for (const k of kids) total += 1 + getSize(k.id);
+      // Apoiadores diretos ainda não carregados
+      let total = apoiadorCountByParent[id] ?? 0;
+      for (const k of kids) {
+        // Apoiadores já carregados são folhas (level 3, sem filhos)
+        total += 1 + (k.role.level === 3 ? 0 : getSize(k.id));
+      }
       computing.delete(id);
       sizes.set(id, total);
       return total;
     }
     for (const c of contacts) getSize(c.id);
     return sizes;
-  }, [contacts, childrenByParent]);
+  }, [contacts, childrenByParent, apoiadorCountByParent]);
 
   // TODOS os descendentes recursivos do nó atual (não inclui o próprio)
   const allDescendants = useMemo(() => {
@@ -214,15 +279,39 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
     return out;
   }, [childrenByParent, currentId]);
 
+  // Total de apoiadores na subárvore atual: carregados (em allDescendants)
+  // + ainda não carregados (via apoiadorCountByParent).
+  const apoiadorTotal = useMemo(() => {
+    const loadedCount = allDescendants.filter(c => c.role.level === 3).length;
+    if (currentId === null) {
+      // Raiz: soma todos os valores restantes no mapa (os não carregados)
+      const unloaded = Object.values(apoiadorCountByParent).reduce((s, n) => s + n, 0);
+      return loadedCount + unloaded;
+    }
+    // Subárvore: count direto de currentId + cada descendente não-apoiador
+    let unloaded = apoiadorCountByParent[currentId] ?? 0;
+    for (const c of allDescendants) {
+      if (c.role.level < 3) unloaded += apoiadorCountByParent[c.id] ?? 0;
+    }
+    return loadedCount + unloaded;
+  }, [allDescendants, apoiadorCountByParent, currentId]);
+
   // Categorias por cargo, com TOTAL recursivo (rede toda abaixo do nó).
   // Na view admin (raiz), garante que todos os 4 cargos apareçam mesmo
   // zerados — assim o card "Coordenadores de Grupo" sempre é visível.
+  // Apoiadores (level 3) são injetados via apoiadorTotal para refletir tanto
+  // os já carregados quanto os ainda não carregados.
   const categories = useMemo(() => {
     const map = new Map<number, { level: number; role: Role; total: number }>();
     for (const c of allDescendants) {
+      if (c.role.level === 3) continue; // apoiadores gerenciados separadamente
       const g = map.get(c.role.level);
       if (g) g.total++;
       else map.set(c.role.level, { level: c.role.level, role: c.role, total: 1 });
+    }
+    // Injeta categoria de apoiadores com total correto
+    if (apoiadorRole && (apoiadorTotal > 0 || currentId === null)) {
+      map.set(3, { level: 3, role: apoiadorRole, total: apoiadorTotal });
     }
     if (currentId === null && allRoles.length > 0) {
       for (const r of allRoles) {
@@ -232,7 +321,7 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
       }
     }
     return Array.from(map.values()).sort((a, b) => a.level - b.level);
-  }, [allDescendants, currentId, allRoles]);
+  }, [allDescendants, currentId, allRoles, apoiadorTotal, apoiadorRole]);
 
   // Quando uma categoria está selecionada, lista descendentes (ou só
   // filhos diretos, quando categoryDirectOnly) daquele cargo
@@ -250,16 +339,21 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
 
   // Apoiadores DIRETOS do nó atual (parent === currentId). Card aparece só
   // quando o nó visualizado é coord ou coord-grupo (níveis 0 e 1).
+  // Usa contagem do mapa (não carregados) + lista já carregada.
   const directApoiadores = useMemo(() => {
     if (currentContact.level !== 0 && currentContact.level !== 1) return null;
-    const apoiadorLv = 3;
-    const directs = allChildren.filter(c => c.role.level === apoiadorLv);
-    if (directs.length === 0) return null;
-    return { level: apoiadorLv, role: directs[0].role, count: directs.length };
-  }, [allChildren, currentContact.level]);
+    if (!currentId) return null;
+    const loadedDirect = allChildren.filter(c => c.role.level === 3);
+    const unloadedCount = apoiadorCountByParent[currentId] ?? 0;
+    const totalCount = loadedDirect.length + unloadedCount;
+    if (totalCount === 0) return null;
+    const role = loadedDirect[0]?.role ?? apoiadorRole;
+    if (!role) return null;
+    return { level: 3, role, count: totalCount };
+  }, [allChildren, currentContact.level, currentId, apoiadorCountByParent, apoiadorRole]);
 
-  // Total descendentes recursivo (já computado em allDescendants)
-  const descendantCount = allDescendants.length;
+  // Total descendentes recursivo: não-apoiadores + apoiadorTotal (carregados + não carregados)
+  const descendantCount = allDescendants.filter(c => c.role.level < 3).length + apoiadorTotal;
 
   // Cargos que o user pode criar abaixo do contato atual
   const availableLevels = useMemo(() => {
@@ -305,6 +399,31 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
     if (exporting) return;
     setExporting(true);
     try {
+      // Garante que apoiadores da subárvore estão disponíveis para o PDF.
+      // Busca direto do servidor (não depende do cache de estado).
+      const apoUrl = currentId
+        ? `/api/rede/apoiadores?subtreeOf=${currentId}`
+        : `/api/rede/apoiadores?all=1`;
+      let pdfContacts = contacts;
+      try {
+        const ar = await fetch(apoUrl);
+        if (ar.ok) {
+          const apos: Contact[] = await ar.json();
+          const existing = new Set(pdfContacts.map(c => c.id));
+          const toAdd = apos.filter(c => !existing.has(c.id));
+          if (toAdd.length) pdfContacts = [...pdfContacts, ...toAdd];
+        }
+      } catch {}
+
+      // childrenByParent local pro PDF (inclui apoiadores)
+      const pdfChildrenByParent = new Map<string | null, Contact[]>();
+      for (const c of pdfContacts) {
+        if (c.parentId === c.id) continue;
+        const k = c.parentId;
+        if (!pdfChildrenByParent.has(k)) pdfChildrenByParent.set(k, []);
+        pdfChildrenByParent.get(k)!.push(c);
+      }
+
       const [{ default: jsPDF }, autoTableMod] = await Promise.all([
         import("jspdf"),
         import("jspdf-autotable"),
@@ -316,7 +435,7 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
       const seen = new Set<string>();
       function buildList(parentId: string | null, depth: number): { c: Contact; d: number }[] {
         const out: { c: Contact; d: number }[] = [];
-        const kids = [...(childrenByParent.get(parentId) ?? [])].sort((a, b) => {
+        const kids = [...(pdfChildrenByParent.get(parentId) ?? [])].sort((a, b) => {
           if (a.role.level !== b.role.level) return a.role.level - b.role.level;
           return a.name.localeCompare(b.name);
         });
@@ -517,7 +636,7 @@ function NetworkExplorerInner({ session }: { session: ExplorerSession }) {
             </div>
           )}
 
-          {loading ? (
+          {loading || apoiadoresLoading ? (
             <CenteredLoader />
           ) : categoryItems.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-12">Nada encontrado.</p>
